@@ -1,0 +1,682 @@
+@import "tailwindcss";
+
+/*
+ * 디자인 토큰 — 색·폰트·간격은 모두 여기서만 정의한다.
+ * Tailwind 기본 팔레트는 지워서 slate/blue 같은 색이 실수로 섞이지 않게 한다.
+ */
+@theme {
+  --color-*: initial;
+  --color-transparent: transparent;
+  --color-current: currentColor;
+  /* 반투명 덧칠용 (bg-white/20, ring-black/50 등). 순수 흑백을 면 색으로 쓰지는 않는다 */
+  --color-black: #000;
+  --color-white: #fff;
+
+  /* 먹색 — 순수 검정 대신 아주 약하게 따뜻한 무채색. 면은 밝기 단계로 겹쳐 구분한다 */
+  --color-ink-950: #0b181e; /* 페이지 배경 */
+  --color-ink-900: #060e11; /* 면 1 — 패널 (2026-10-04 배경 도시 위에서 또렷하게 검정 쪽으로) */
+  --color-ink-850: #0c191d; /* 면 2 — 패널 속 블록, 입력창 */
+  --color-ink-800: #142429; /* 면 3 — 호버, 선택 */
+  --color-ink-700: #23414a; /* 불투명 구분선이 필요할 때 */
+  --color-ink-600: #34565f;
+
+  /* 반투명 괘선 — 어떤 면 위에서도 같은 느낌. 테두리는 기본적으로 이걸 쓴다 */
+  --color-line: rgb(200 235 230 / 0.07);
+  --color-line-strong: rgb(200 235 230 / 0.13);
+
+  /* 크림 — 텍스트 */
+  --color-paper-50: #eef5f4; /* 제목·수치 */
+  --color-paper-200: #c3d3d2; /* 본문 */
+  --color-paper-400: #8aa2a1; /* 보조 */
+  --color-paper-500: #6a8483; /* 캡션, 비활성 */
+
+  /* 아이템 상점 — 게임 상점 화면을 본뜬 밝은 판. 분류마다 판 색이 다르고 4티어 칸만 어둡다 */
+  --color-shop-weapon: #b5a07a;
+  --color-shop-weapon-deep: #221c15;
+  --color-shop-vitality: #9ea690;
+  --color-shop-vitality-deep: #1b201b;
+  --color-shop-spirit: #a39bb3;
+  --color-shop-spirit-deep: #1f1c27;
+  --color-shop-card: #efe8d8; /* 아이템 카드 바탕 (크림색 종이) */
+  --color-shop-ink: #1c1a16; /* 밝은 판 위 글자 */
+
+  /* 상단 띠 — 검색창과 메뉴 탭이 놓이는 줄 (OP.GG 의 브랜드 색 띠 자리) */
+  --color-band: #0b1a20;
+
+  /* 티어 배지 — 사이트 색(청록 달밤)과 따로 고정 (2026-10-03 사용자: '티어색은 굳이 바꿀 필요 없다'). 예전 황동·구리·크림 */
+  --color-tier-s: #d27c4c;
+  --color-tier-a: #d6ad58;
+  --color-tier-b: #d0c9bd;
+
+  /* 첫 페이지 밤 도시 장면 (CityScene) — 하늘 · 달 · 건물 세 겹 · 창문 불빛. 맨 앞 건물(city-near)은 페이지 배경과 같은 색 */
+  --color-sky-top: #0b1a20;
+  --color-sky-horizon: #4a7672;
+  --color-moon: #9de5da;
+  --color-city-far: #3f6865;
+  --color-city-mid: #1f3538;
+  --color-city-near: var(--color-ink-950);
+  --color-window: #cfe6ef;
+
+  /* 포인트 컬러 — 황동(주), 구리(보조) */
+  --color-brass-200: #c8f1ea;
+  --color-brass-400: #9de5da;
+  --color-brass-600: #5fa79b;
+  --color-copper-400: #d27c4c;
+  --color-copper-600: #8a4d2d;
+
+  /* 게임 고유 분류색 — 무기(주황)/활력(초록)/영혼(보라).
+     면에는 bg-weapon/10 처럼 반투명으로 옅게 깔고, 글자·점·얇은 선에만 원색을 쓴다 */
+  --color-skill-tile: #e9dfc6; /* 스킬 순서의 능력 칸 (게임 빌드 화면처럼 밝은 바탕에 검은 아이콘) */
+  --color-weapon: #e39a48;
+  --color-vitality: #8fbf5f;
+  --color-spirit: #ae94dc;
+  /* 부운 — 게임 부운 아이콘(keystat_boon_arrow)의 하늘빛 민트 */
+  --color-boon: #99ffd6;
+  --color-buff: #8fc063;
+  --color-nerf: #e0735a;
+
+  /* 폰트 — 제목·숫자도 산세리프(굵고 좁은 자간). 세리프는 로고·영웅 이름 같은 브랜드 강조에만 */
+  --font-sans: "Pretendard Variable", Pretendard, -apple-system, "Apple SD Gothic Neo",
+    "Noto Sans KR", "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-2xs--line-height: 1rem;
+
+  /* 작고 또렷한 모서리. 큰 둥근 모서리는 쓰지 않는다 */
+  --radius-*: initial;
+  --radius-xs: 1px;
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+
+  --tracking-label: 0.08em;
+
+  --container-page: 80rem;
+  --container-prose: 40rem;
+}
+
+@layer base {
+  html {
+    background-color: var(--color-ink-950);
+    color: var(--color-paper-50);
+    font-family: var(--font-sans);
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+    text-rendering: optimizeLegibility;
+  }
+
+  /* 제목은 굵고 자간을 조금 좁혀 단단하게 */
+  h1,
+  h2,
+  h3 {
+    letter-spacing: -0.015em;
+  }
+
+  /* 언어별 폰트 스택 */
+  :lang(ko) {
+    word-break: keep-all; /* 한국어는 어절 단위로 줄바꿈 */
+  }
+  /* 한글·한자에는 이탤릭이 없다. 가짜 기울임 대신 정체로 둔다 */
+  :lang(ko),
+  :lang(zh) {
+    font-synthesis-style: none;
+  }
+  :lang(zh) {
+    --font-sans: "PingFang SC", "Hiragino Sans GB", "Noto Sans SC", "Noto Sans CJK SC",
+      "Microsoft YaHei", "Source Han Sans SC", sans-serif;
+  }
+  /* 다른 언어 문장이 섞인 요소(푸터 고지 등)도 해당 언어 스택을 쓰게 */
+  [lang] {
+    font-family: var(--font-sans);
+  }
+
+  /* 스크롤 막대가 생기고 사라져도 폭이 흔들리지 않게 자리를 늘 비워 둔다 */
+  html {
+    scrollbar-gutter: stable;
+  }
+  /* 모달 창(<dialog>)이 열려 있는 동안 뒤 페이지는 스크롤되지 않는다 */
+  html:has(dialog[open]) {
+    overflow: hidden;
+  }
+
+  body {
+    font-size: 0.875rem;
+    line-height: 1.55;
+  }
+
+  ::selection {
+    background-color: var(--color-brass-400);
+    color: var(--color-ink-950);
+  }
+
+  :focus-visible {
+    outline: 2px solid color-mix(in oklab, var(--color-brass-400) 70%, transparent);
+    outline-offset: 2px;
+    border-radius: var(--radius-sm);
+  }
+
+  a {
+    text-underline-offset: 0.2em;
+    text-decoration-thickness: 1px;
+  }
+}
+
+@layer components {
+  /* 아이템 아이콘 (ItemIcon) — 영웅 빌드 탭에 수백 개라 긴 유틸리티 줄 대신 짧은 이름으로 (2026-10-14 최적화: 영웅 페이지 HTML 의 60% 가 class 글자였다).
+     크기는 유틸리티(size-6 등)가 덮는다. 분류색은 ii-weapon/vitality/spirit 이 --ii 로 준다 */
+  .item-icon {
+    position: relative;
+    display: grid;
+    width: calc(var(--spacing) * 8);
+    height: calc(var(--spacing) * 8);
+    flex: none;
+    place-items: center;
+    overflow: hidden;
+    border-radius: var(--radius-sm);
+    font-size: 0.6875rem;
+    line-height: 1;
+    font-weight: 700;
+    letter-spacing: -0.025em;
+    color: var(--ii);
+    background: color-mix(in oklab, var(--ii) 15%, transparent);
+  }
+  .item-icon > img {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  .item-icon::after {
+    content: '';
+    pointer-events: none;
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    box-shadow: inset 0 0 0 1px color-mix(in oklab, var(--ii) 50%, transparent);
+  }
+  .ii-weapon {
+    --ii: var(--color-weapon);
+  }
+  .ii-vitality {
+    --ii: var(--color-vitality);
+  }
+  .ii-spirit {
+    --ii: var(--color-spirit);
+  }
+
+  /* 소울 아이콘 (SoulIcon) — 마스크 주소는 BaseLayout 이 :root 에 --soul-mask 로 한 번 */
+  .soul-icon {
+    display: inline-block;
+    width: 0.8em;
+    height: 1em;
+    flex: none;
+    color: var(--color-brass-400);
+    background: currentColor;
+    mask: var(--soul-mask) center / contain no-repeat;
+    -webkit-mask: var(--soul-mask) center / contain no-repeat;
+  }
+
+  /* 아이템 상세의 수치 줄 (ItemDetail) — 아이템 페이지에 수백 줄 */
+  .iv-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: calc(var(--spacing) * 4);
+  }
+  .iv-val {
+    flex: none;
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* 스킬 순서 (SkillOrder · 빌드 페이지 창) — 게임 빌드 화면처럼 능력마다 한 줄, 찍은 단계 자리에 표시 (2026-10-14 사용자 요청).
+     해금 = 보라 마름모, 강화 = 빈 마름모 + 그 강화에 드는 포인트(1 · 2 · 5). 단계 수는 --steps */
+  .skill-track {
+    display: grid;
+    gap: 3px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+  }
+  .st-row {
+    display: grid;
+    grid-template-columns: 1.75rem minmax(calc(var(--steps) * 1.75rem), 1fr);
+    align-items: center;
+    gap: 0.375rem;
+  }
+  /* 좁은 화면에선 줄이 옆으로 밀리므로 능력 칸은 왼쪽에 붙여 둔다 */
+  .st-icon {
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    display: grid;
+    width: 1.75rem;
+    height: 1.75rem;
+    place-items: center;
+    border-radius: var(--radius-sm);
+    background: var(--color-skill-tile);
+    color: var(--color-ink-950);
+    font-size: var(--text-2xs);
+    font-weight: 700;
+  }
+  /* 게임 능력 아이콘은 흰색 → 밝은 칸 위에서 검게 */
+  .st-icon img {
+    width: 1.25rem;
+    height: 1.25rem;
+    filter: invert(1) brightness(0.2);
+  }
+  .st-line {
+    display: grid;
+    grid-template-columns: repeat(var(--steps), minmax(0, 1fr));
+    height: 1.75rem;
+    align-items: center;
+    border-radius: var(--radius-sm);
+    background: var(--color-ink-850);
+  }
+  .st-mark {
+    grid-row: 1;
+    justify-self: center;
+    display: inline-flex;
+    height: 1.125rem;
+    align-items: center;
+    gap: 0.1875rem;
+    border-radius: var(--radius-md);
+    background: var(--color-ink-700);
+    padding: 0 0.3125rem;
+    font-size: var(--text-2xs);
+    line-height: 1;
+    font-weight: 700;
+    color: var(--color-paper-50);
+    font-variant-numeric: tabular-nums;
+    white-space: nowrap;
+  }
+  .st-mark::before {
+    content: '';
+    width: 0.4375rem;
+    height: 0.4375rem;
+    flex: none;
+    transform: rotate(45deg);
+    border: 1.5px solid var(--color-paper-200);
+  }
+  /* 예상 단계 (선마 — 실제 데이터 뒤를 같은 순서로 채운 부분) */
+  .st-mark.st-pred {
+    opacity: 0.45;
+  }
+  .st-mark.st-unlock::before {
+    width: 0.5rem;
+    height: 0.5rem;
+    border-color: var(--color-spirit);
+    background: var(--color-spirit);
+  }
+
+  /* 작은 라벨 */
+  .label {
+    font-size: var(--text-2xs);
+    line-height: var(--text-2xs--line-height);
+    font-weight: 600;
+    letter-spacing: var(--tracking-label);
+    text-transform: uppercase;
+    color: var(--color-paper-500);
+  }
+  :lang(ko) .label,
+  :lang(zh) .label {
+    letter-spacing: 0.02em;
+  }
+
+  /* 잉크 얼룩 모양 틀 (2026-10-03 사용자 요청: 네모로 자르지 말고 물감 튄 모양으로) — 첫 페이지 패치 그림.
+     public/masks/ink-blot.svg = 그림 비율(1200×1021) 얼룩, 초타원(n=4)에 작은 물결 — 가운데가 꽉 차 위쪽 제목 글자·아래 영웅이 안 잘린다.
+     public/masks/ink-blot-wide.svg = 그림 뒤 흐린 배경의 넓은(2:1) 얼룩 + 방울. 둘 다 SVG 안 흐림 필터로 가장자리를 부드럽게.
+     틀이 그림과 따로라 패치 그림이 바뀌어도 그대로 씌워진다 (가장자리 가까이 중요한 글자가 있는지만 확인).
+     예전의 선형·타원 마스크(.fade-edges)는 네모 티가 남아 이걸로 바꿨다 */
+  .ink-blot {
+    -webkit-mask: url('/masks/ink-blot.svg') center / 100% 100% no-repeat;
+    mask: url('/masks/ink-blot.svg') center / 100% 100% no-repeat;
+  }
+  .ink-blot-wide {
+    -webkit-mask: url('/masks/ink-blot-wide.svg') center / 100% 100% no-repeat;
+    mask: url('/masks/ink-blot-wide.svg') center / 100% 100% no-repeat;
+  }
+
+  /* 승률표 랭크 범위 막대 — 휘장 11개(단계 1–11) 위에 고른 범위 띠, 아래에 손잡이 두 개(겹친 range 입력) */
+  .rank-range {
+    position: relative;
+    width: min(100%, 27rem);
+    padding-bottom: 1.25rem;
+  }
+  .rank-range-icons {
+    position: relative;
+    display: grid;
+    grid-template-columns: repeat(11, minmax(0, 1fr));
+  }
+  .rank-range-icons button {
+    display: grid;
+    place-items: center;
+    width: 100%;
+    height: 2.25rem;
+    opacity: 0.3;
+    transition: opacity 150ms;
+  }
+  .rank-range-icons button[data-in],
+  .rank-range-icons button:hover {
+    opacity: 1;
+  }
+  .rank-range-icons img {
+    /* 끌 때 휘장 그림이 따라 나오지 않게 (2026-10-09) */
+    -webkit-user-drag: none;
+    user-select: none;
+    pointer-events: none;
+    width: 1.625rem;
+    height: 1.625rem;
+    object-fit: contain;
+  }
+  .rank-range-band {
+    position: absolute;
+    top: 0;
+    height: 2.25rem;
+    border-radius: var(--radius-sm);
+    background: color-mix(in srgb, var(--color-brass-400) 14%, transparent);
+  }
+  /* 손잡이 가운데가 휘장 칸 가운데에 오도록: 입력 폭 = 10칸 + 손잡이 폭, 왼쪽 = 반 칸 - 손잡이 반 */
+  .rank-range-track {
+    position: absolute;
+    bottom: 0;
+    left: calc(100% / 22 - 7px);
+    width: calc(100% * 10 / 11 + 14px);
+    height: 1.25rem;
+  }
+  .rank-range-track::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 7px;
+    right: 7px;
+    height: 2px;
+    margin-top: -1px;
+    background: var(--color-line-strong);
+  }
+  .rank-range-fill {
+    position: absolute;
+    top: 50%;
+    height: 2px;
+    margin-top: -1px;
+    background: var(--color-brass-400);
+  }
+  .rank-range-track input {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    margin: 0;
+    appearance: none;
+    background: transparent;
+    pointer-events: none;
+  }
+  .rank-range-track input::-webkit-slider-thumb {
+    appearance: none;
+    pointer-events: auto;
+    width: 14px;
+    height: 14px;
+    border-radius: var(--radius-sm);
+    border: 2px solid var(--color-ink-950);
+    background: var(--color-brass-400);
+    cursor: grab;
+  }
+  .rank-range-track input::-moz-range-thumb {
+    pointer-events: auto;
+    width: 10px;
+    height: 10px;
+    border-radius: var(--radius-sm);
+    border: 2px solid var(--color-ink-950);
+    background: var(--color-brass-400);
+    cursor: grab;
+  }
+  .rank-range-track input:focus-visible::-webkit-slider-thumb {
+    outline: 2px solid var(--color-brass-200);
+    outline-offset: 1px;
+  }
+
+  /* ── 범위 막대 꾸밈 (2026-10-09 사용자 '힙하게' — 시안 A 채택, data-style='a') ─────────────── */
+  .rank-range-seg {
+    display: none;
+  }
+  /* 공통: 고르지 않은 휘장은 흑백·흐리게, 고른 휘장은 원래 색 */
+  .rank-range[data-style] .rank-range-icons button {
+    opacity: 1;
+  }
+  .rank-range[data-style] .rank-range-icons img {
+    filter: grayscale(1);
+    opacity: 0.45;
+    transition: filter 150ms, opacity 150ms;
+  }
+  .rank-range[data-style] .rank-range-icons button[data-in] img,
+  .rank-range[data-style] .rank-range-icons button:hover img {
+    filter: none;
+    opacity: 1;
+  }
+  /* A — 휘장 가운데를 지나는 선 (2026-10-09 사용자: A 느낌 + 선은 휘장 중앙). 고른 구간만 민트, 손잡이는 양끝 휘장 자체(투명) */
+  .rank-range[data-style='a'] {
+    padding: 0.25rem 0.5rem;
+    border-radius: var(--radius-md);
+    background: var(--color-ink-900);
+    box-shadow: inset 0 0 0 1px var(--color-line);
+  }
+  .rank-range[data-style='a'] .rank-range-band {
+    display: none;
+  }
+  .rank-range[data-style='a'] .rank-range-icons {
+    z-index: 1;
+  }
+  .rank-range[data-style='a'] .rank-range-track {
+    top: 0.25rem;
+    bottom: auto;
+    height: 2.25rem;
+  }
+  .rank-range[data-style='a'] .rank-range-track::before,
+  .rank-range[data-style='a'] .rank-range-fill {
+    height: 3px;
+    margin-top: -1.5px;
+    border-radius: 2px;
+  }
+  .rank-range[data-style='a'] .rank-range-track::before {
+    background: var(--color-ink-700);
+  }
+  .rank-range[data-style='a'] .rank-range-track input {
+    z-index: 2;
+  }
+  /* 손잡이 = 양끝 휘장 위에 겹친 투명 칸 — 휘장을 잡고 끌면 범위가 바뀐다 */
+  .rank-range[data-style='a'] .rank-range-track input::-webkit-slider-thumb {
+    width: 14px;
+    height: 2.25rem;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  .rank-range[data-style='a'] .rank-range-track input::-moz-range-thumb {
+    width: 14px;
+    height: 2.25rem;
+    border: 0;
+    background: transparent;
+    cursor: pointer;
+  }
+  /* 첫 페이지 외 페이지의 화면 전체 배경 밤 도시 (BaseLayout, 고정) — 투명도를 낮춰 박스(거의 검정) 뒤로 은은하게 */
+  .page-backdrop {
+    opacity: 0.5;
+  }
+
+  /* 패널 — 배경보다 한 단계 밝은 면 + 옅은 괘선. 머리 띠 없이 제목 줄만 */
+  .panel {
+    background-color: var(--color-ink-900);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+  }
+  .panel-head {
+    display: flex;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.875rem 1rem 0.25rem;
+  }
+  .panel-title {
+    font-size: 1rem;
+    font-weight: 700;
+    color: var(--color-paper-50);
+  }
+  .panel-link {
+    margin-left: auto;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--color-paper-400);
+    transition: color 150ms;
+  }
+  .panel-link:hover {
+    color: var(--color-brass-200);
+  }
+
+  /* 칩 — 옅게 채운 짧은 태그 */
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.3rem;
+    height: 1.375rem;
+    padding: 0 0.5rem;
+    border-radius: var(--radius-sm);
+    background-color: var(--color-ink-800);
+    font-size: 0.75rem;
+    font-weight: 600;
+    line-height: 1;
+    color: var(--color-paper-200);
+    white-space: nowrap;
+  }
+
+  /* 입력창 */
+  .field {
+    height: 2.25rem;
+    width: 100%;
+    padding: 0 0.75rem;
+    border-radius: var(--radius-md);
+    background-color: var(--color-ink-850);
+    border: 1px solid var(--color-line);
+    color: var(--color-paper-50);
+    font-size: 0.875rem;
+    transition: border-color 150ms, background-color 150ms;
+  }
+  .field::placeholder {
+    color: var(--color-paper-500);
+  }
+  .field:hover {
+    border-color: var(--color-line-strong);
+  }
+  .field:focus {
+    outline: none;
+    border-color: color-mix(in oklab, var(--color-brass-400) 60%, transparent);
+    background-color: var(--color-ink-900);
+  }
+  /* 왼쪽 돋보기 아이콘 자리가 있는 입력창 */
+  .field-icon {
+    padding-left: 2.125rem;
+  }
+
+  /* 분할 버튼 — 옅은 트랙 안에서 선택된 항목만 떠 있는 형태 */
+  .seg {
+    display: inline-flex;
+    gap: 2px;
+    padding: 3px;
+    border-radius: var(--radius-md);
+    background-color: var(--color-ink-850);
+    border: 1px solid var(--color-line);
+  }
+  .seg > button,
+  .seg > a {
+    height: 1.75rem;
+    padding: 0 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.8125rem;
+    font-weight: 600;
+    color: var(--color-paper-400);
+    white-space: nowrap;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    transition: color 150ms, background-color 150ms;
+  }
+  .seg > :hover {
+    color: var(--color-paper-50);
+  }
+  .seg > [aria-pressed="true"],
+  .seg > [aria-current="true"] {
+    background-color: var(--color-ink-700);
+    color: var(--color-paper-50);
+  }
+
+  /* 툴팁 — 부모에 .has-tip, 자식에 .tip. 마우스·키보드 포커스 모두 */
+  .has-tip {
+    position: relative;
+  }
+  .tip {
+    position: absolute;
+    z-index: 30;
+    left: 0;
+    top: calc(100% + 6px);
+    width: 16rem;
+    visibility: hidden;
+    opacity: 0;
+    border-radius: var(--radius-md);
+    background-color: var(--color-ink-850);
+    border: 1px solid var(--color-line-strong);
+    box-shadow: 0 12px 32px rgb(0 0 0 / 0.5);
+    pointer-events: none;
+    transition: opacity 120ms;
+  }
+  /* 마우스가 있는 기기에서만 띄운다. 터치 기기는 탭하면 바로 상세 창이 열린다.
+     터치 기기에선 아예 빼 둔다 — 숨긴(visibility) 툴팁도 자리를 차지해 오른쪽 끝 칸의 툴팁이 페이지를 옆으로 넓혔다 (2026-10-05 모바일 점검) */
+  @media not ((hover: hover) and (pointer: fine)) {
+    .tip {
+      display: none;
+    }
+  }
+  @media (hover: hover) and (pointer: fine) {
+    /* 포커스로 띄우는 건 키보드로 옮겨 왔을 때만(:focus-visible). 그냥 :focus-within 이면 아이템을 눌러 상세 창을 열었다 닫은 뒤
+       포커스가 그 칸에 남아, 다른 아이템에 마우스를 올리면 툴팁 두 개가 같이 떠 있었다 (2026-10-06 사용자 제보) */
+    .has-tip:hover > .tip,
+    .has-tip:has(:focus-visible) > .tip {
+      visibility: visible;
+      opacity: 1;
+    }
+    /* 툴팁은 한 번에 하나 — 다른 칸에 마우스를 올리면 포커스가 남아 있던 칸(Esc 로 창을 닫은 경우 등)의 툴팁은 숨긴다 */
+    body:has(.has-tip:hover) .has-tip:not(:hover) > .tip {
+      visibility: hidden;
+      opacity: 0;
+    }
+  }
+
+  /* 상점 가격표 — 게임처럼 왼쪽이 뾰족한 검은 꼬리표 */
+  .price-tag {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.375rem;
+    height: 1.5rem;
+    padding: 0 0.625rem 0 0.875rem;
+    background-color: #141311;
+    color: var(--color-paper-50);
+    font-size: 0.8125rem;
+    font-weight: 800;
+    font-variant-numeric: tabular-nums;
+    clip-path: polygon(0.5rem 0, 100% 0, 100% 100%, 0.5rem 100%, 0 50%);
+  }
+
+  /* 보기 전환: 루트의 data-view-mode 에 따라 카드/표 중 하나만 */
+  [data-view-mode="grid"] [data-pane="table"],
+  [data-view-mode="table"] [data-pane="grid"] {
+    display: none !important; /* .grid 같은 유틸리티보다 우선 */
+  }
+
+  /* 필터로 숨겨진 항목 */
+  [data-hidden] {
+    display: none !important;
+  }
+
+  /* 탭으로 가려진 패널 — 필터(data-hidden)와 따로 두어 서로 덮어쓰지 않게 */
+  [data-tab-hidden] {
+    display: none !important;
+  }
+}

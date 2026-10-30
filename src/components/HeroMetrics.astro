@@ -1,0 +1,291 @@
+---
+/**
+ * 영웅 상세 '지표' 탭 (2026-10-02 확장, 2026-10-25 배치 정리, 2026-10-28 피해 구성 · 상대 전적 · 시너지 뺌) — 위에서부터
+ *   요약 타일 → 플레이 성향 | 경기당 평균 → 승률 추이 → 랭크별 | 경기 길이별 → 판수별(2×2) | 라인전.
+ * 두 칸 줄은 모두 같은 반반 폭 (예전엔 줄마다 5:6 · 3:2 · 1:1 이라 좌우 끝이 안 맞았다 — 사용자 '중구난방').
+ * 기준(전령사+ 14일 / 모든 매치 / 랭크 매치)은 화면에 글로 두지 않고 Panel hint — 제목에 마우스 · 터치 · 키보드 포커스하면 툴팁 (사용자: 박스 구석 설명은 필수 아니면 없애기).
+ * 순위('23/44')는 값만큼 굵게 — 회색 작은 글씨에 묻혀 있었다. 그래프 툴팁은 scripts/tooltip.ts.
+ */
+import Panel from './Panel.astro';
+import HeroRadar from './HeroRadar.astro';
+import TrendChart from './TrendChart.astro';
+import DeltaBars from './DeltaBars.astro';
+import type { HeroCharts, HeroInsights, HeroMetricKey, HeroProfile, Rank } from '../data';
+import { getLaneStats, getTierData, MASTERY_BUCKETS, PROFILE_AXES, PROFILE_DAYS, TREND_DAYS } from '../data';
+import { tierChange } from '../lib/tier-reason';
+import { gameImage } from '../lib/images';
+import { localePath, useTranslations, type Locale } from '../i18n';
+import { fill, formatNumber, formatPercent } from '../lib/format';
+import { TIER_TONE } from '../lib/tier-tone';
+
+interface Props {
+  lang: Locale;
+  /** 표·그래프에서 '이 영웅' 대신 쓰는 이름 (2026-10-06 사용자 요청) */
+  heroName: string;
+  profile: HeroProfile | null;
+  insights: HeroInsights | null;
+  charts: HeroCharts | null;
+  ranks: Rank[];
+  /** 승률 추이에 세로 점선으로 표시할 패치 게시일 */
+  patches: Array<{ day: number; label: string }>;
+}
+const { lang, heroName, profile, insights, charts, ranks, patches } = Astro.props;
+const t = useTranslations(lang);
+const tt = t.tiers;
+const pct = (n: number) => formatPercent(lang, n);
+
+/** 킬·데스·어시스트·KDA 는 소수 한 자리, 명중률은 %, 나머지는 정수 */
+const DECIMAL: HeroMetricKey[] = ['kills', 'deaths', 'assists', 'kda', 'lastHits', 'denies'];
+const show = (key: HeroMetricKey, v: number) =>
+  key === 'accuracy' ? pct(v) : DECIMAL.includes(key) ? formatNumber(lang, v, key === 'kda' ? 2 : 1) : formatNumber(lang, Math.round(v));
+
+const tier = insights?.tier;
+// 승률 · 판수 · 픽률은 통계 페이지 기본과 같은 기준(현재 패치 · 랭크 전체 — 2026-10-29 통계가 [랭크 | 일반] 으로 바뀌며 '전체 매치' 에서 바꿈) — 통계에서 보고 눌렀을 때 같은 숫자가 나오게
+// (2026-10-15 사용자: 데드맨 대니가 통계 37.3% 인데 눌렀더니 30.2%). 티어 · 숙련자 승률 · 근거 줄은 티어와 같은 전령사+ 랭크 · 최근 14일.
+const tierDataForSummary = await getTierData();
+const overall = tier ? tierDataForSummary?.boards.find((b) => b.window === 'patch' && b.rank === 'ranked')?.heroes.find((h) => h.heroId === tier.heroId) : undefined;
+const summary = tier && [
+  { label: tt.winRate, value: pct(overall?.winRate ?? tier.winRate) },
+  // 막 출시된 영웅은 숙련자(평생 80판+)가 아직 없다 — 0.0% 가 아니라 '—'
+  // 숙련자 경기가 200판 미만이면 '—' (막 나온 영웅은 1판짜리 100% 가 보였다, 2026-10-06)
+  { label: tt.expWinRate, value: tier.expMatches >= 200 ? pct(tier.expWinRate) : '—', hint: tier.expMatches >= 200 ? `${tt.expHint} · ${t.heroes.basisUpperShort}` : tt.tooFewGames.replace('{n}', formatNumber(lang, tier.expMatches)) },
+  { label: tt.pickRate, value: pct(overall?.pickRate ?? tier.pickRate), hint: tt.pickHint },
+  { label: tt.matches, value: formatNumber(lang, overall?.matches ?? tier.matches) },
+];
+const tagLabel = tier?.tag === 'skill' ? tt.tagSkill : tier?.tag === 'easy' ? tt.tagEasy : undefined;
+// 라인전 (매치 9분 라인 소울 ±10%, 최근 7일 · 전령사+) — 통계 '라인전' 보기와 같은 데이터
+const laneStats = await getLaneStats();
+const laneIdx = laneStats && tier ? laneStats.heroes.findIndex((h) => h.heroId === tier.heroId) : -1;
+const lane = laneStats && laneIdx >= 0 ? { ...laneStats.heroes[laneIdx], place: laneIdx + 1, count: laneStats.heroes.length } : null;
+// 지난주 티어 (티어 보드와 같은 '최근 2주 · 상위권')
+const tierData = await getTierData();
+const heroId = tier?.heroId;
+const prevTier = heroId !== undefined ? tierData?.prevTiers?.upper?.[heroId] : undefined;
+const change = tier ? tierChange(tier.tier, prevTier) : null;
+
+// 숙련 곡선 — 같은 구간 평균보다 1%p 넘게 높으면 초록, 낮으면 빨강
+const mastery = (insights?.mastery ?? []).some((b) => b.winRate !== null) ? insights!.mastery : null;
+const rangeLabel = (b: { min: number; max?: number }) =>
+  b.max === undefined ? fill(t.heroes.masteryOpen, { min: b.min }) : fill(t.heroes.masteryRange, { min: b.min, max: b.max });
+const masteryTone = (wr: number, avg: number) => (wr - avg > 1 ? 'text-buff' : avg - wr > 1 ? 'text-nerf' : 'text-paper-50');
+// 판수별 | 라인전 은 한 줄 두 칸 — 하나만 데이터가 있으면 빈 쪽도 같은 모양으로 흐리게 + '표본 부족' (2026-10-29 사용자: 반 칸이 비지 않게)
+// 흐린 자리는 데이터를 받긴 했는데 이 영웅만 기준에 못 미칠 때만 — 요청 자체가 실패했으면(빌드 서버엔 캐시가 없다) 39명 모두 '표본 부족' 이 되므로 예전처럼 숨긴다 (PR #26 리뷰)
+const masteryFetched = (insights?.mastery ?? []).some((b) => b.average > 0);
+const laneOnly = !mastery && masteryFetched && lane;
+const masteryOnly = mastery && !lane && laneStats;
+
+// 플레이 성향 육각형 — 꼭짓점에 경기당 값 · '순위/영웅 수'
+const radarAxes = profile?.metrics.length
+  ? PROFILE_AXES.map((key) => {
+      const m = profile.metrics.find((x) => x.key === key)!;
+      return {
+        label: t.heroes.metric[key],
+        value: key === 'kills' || key === 'assists' ? formatNumber(lang, m.value, 1) : formatNumber(lang, Math.round(m.value)),
+        pct: m.percentile,
+        rank: `${m.rank}/${profile.heroCount}`,
+      };
+    })
+  : undefined;
+
+// 랭크별 — 단계 이름·휘장 (1 개척가 … 11 불멸자)
+const rankItems = charts
+  ? await Promise.all(
+      charts.ranks.map(async (r) => {
+        const rank = ranks.find((x) => x.tier === r.tier);
+        return { name: rank?.name ?? String(r.tier), icon: await gameImage(rank?.image, 48, 48), winRate: r.winRate, matches: r.matches };
+      }),
+    )
+  : [];
+const durLabel = (b: { min: number; max?: number }) =>
+  b.min === 0 ? fill(t.heroes.durUnder, { n: b.max! }) : b.max === undefined ? fill(t.heroes.durOver, { n: b.min }) : fill(t.heroes.durRange, { a: b.min, b: b.max });
+const durationItems = (charts?.durations ?? []).map((d) => ({ name: durLabel(d), label: durLabel(d), winRate: d.winRate, matches: d.matches }));
+
+---
+
+<div class="grid grid-cols-[minmax(0,1fr)] gap-4">
+  {
+    tier && summary && (
+      <section aria-label={t.heroes.tabMetrics}>
+        <dl class="grid grid-cols-2 gap-2 sm:grid-cols-5">
+          {/* 티어 칸을 누르면 티어 페이지로 — 근거 한 줄 · 기준 설명은 2026-10-15 뺐다 (사용자: 작은 글씨 두 줄은 의미 없다, 근거는 티어 페이지에) */}
+          <div class="relative col-span-2 flex items-center gap-3 rounded-md bg-ink-900 px-3.5 py-3 ring-1 ring-line ring-inset transition-colors duration-150 hover:bg-ink-800 sm:col-span-1">
+            <a href={localePath(lang, 'tiers')} title={`${t.heroes.viewTiers} · ${t.heroes.basisUpperShort}`} aria-label={t.heroes.viewTiers} class="absolute inset-0 rounded-md" />
+            <dt class="sr-only">{t.heroes.tier}</dt>
+            <dd class:list={['grid size-11 flex-none place-items-center rounded-md text-2xl font-extrabold', tier.tier ? TIER_TONE[tier.tier] : 'bg-ink-800 text-paper-500']}>
+              {tier.tier ?? '–'}
+            </dd>
+            <dd class="min-w-0 text-xs">
+              <span class="block text-paper-400">{t.heroes.tier}</span>
+              {tagLabel && <span class="chip mt-1">{tagLabel}</span>}
+              {tier.lowSample && <span class="chip mt-1 text-paper-400">{tt.lowSample}</span>}
+              {change ? (
+                <span class:list={['mt-1 block font-semibold tabular-nums', change > 0 ? 'text-buff' : 'text-nerf']}>
+                  {change > 0 ? '▲' : '▼'}
+                  {Math.abs(change)} · {fill(tt.prevTier, { tier: prevTier ?? '' })}
+                </span>
+              ) : null}
+            </dd>
+          </div>
+          {summary.map((s) => (
+            <div class="rounded-md bg-ink-900 px-3.5 py-3 ring-1 ring-line ring-inset" title={s.hint}>
+              <dt class="truncate text-xs text-paper-400">{s.label}</dt>
+              <dd class="mt-0.5 text-2xl font-bold tracking-tight tabular-nums">{s.value}</dd>
+            </div>
+          ))}
+        </dl>
+      </section>
+    )
+  }
+
+  {/* 플레이 성향 | 경기당 평균 */}
+  <div class="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+    {
+      radarAxes && (
+        <Panel title={t.heroes.profileTitle} hint={fill(t.heroes.noteAll, { days: PROFILE_DAYS })} class="flex flex-col" bodyClass="flex flex-1 flex-col justify-center px-4 pb-4">
+          <HeroRadar axes={radarAxes} title={t.heroes.profileTitle} averageLabel={t.heroes.profileAverage} class="mx-auto w-full max-w-lg" />
+        </Panel>
+      )
+    }
+    {
+      profile && (
+        <Panel title={t.heroes.averagesTitle} hint={`${fill(t.heroes.noteAll, { days: PROFILE_DAYS })} · ${t.heroes.rankNote}`} class="flex flex-col" bodyClass="flex-1 pb-2">
+          <table class="w-full text-sm">
+            <thead class="text-xs text-paper-400">
+              <tr class="border-b border-line">
+                <th scope="col" class="px-2.5 py-2 text-left font-medium sm:px-4">{t.heroes.statCol}</th>
+                <th scope="col" class="px-2.5 py-2 text-right font-medium sm:px-4">{heroName}</th>
+                <th scope="col" class="px-2.5 py-2 text-right font-medium sm:px-4" title={t.heroes.rankNote}>{t.heroes.colRank}</th>
+                <th scope="col" class="px-2.5 py-2 text-right font-medium sm:px-4">{t.heroes.colAverage}</th>
+              </tr>
+            </thead>
+            <tbody>
+              {profile.metrics.map((m) => (
+                <tr class="border-t border-line first:border-t-0">
+                  <th scope="row" class="px-2.5 py-2 text-left font-medium text-paper-200 sm:px-4">{t.heroes.metric[m.key]}</th>
+                  <td class="px-2.5 py-2 text-right font-bold text-paper-50 tabular-nums sm:px-4">{show(m.key, m.value)}</td>
+                  <td class="px-2.5 py-2 text-right tabular-nums sm:px-4">
+                    <span class:list={['font-bold', m.rank <= 5 ? 'text-brass-200' : 'text-paper-50']}>{m.rank}</span>
+                    <span class="text-xs text-paper-400">/{profile.heroCount}</span>
+                  </td>
+                  <td class="px-2.5 py-2 text-right text-paper-400 tabular-nums sm:px-4">{show(m.key, m.average)}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </Panel>
+      )
+    }
+  </div>
+
+  {
+    charts && charts.trend.length > 2 && (
+      <Panel title={t.heroes.trendTitle} hint={fill(t.heroes.trendNote, { days: TREND_DAYS })} bodyClass="px-4 pb-4">
+        <TrendChart lang={lang} points={charts.trend} patches={patches} />
+      </Panel>
+    )
+  }
+
+  {/* 랭크별 | 경기 길이별 — 같은 막대 그래프라 높이가 같다 */}
+  <div class="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+    {
+      rankItems.length > 0 && (
+        <Panel title={t.heroes.rankTitle} hint={t.heroes.rankChartNote} bodyClass="px-4 pb-4">
+          <DeltaBars lang={lang} items={rankItems} />
+        </Panel>
+      )
+    }
+    {
+      durationItems.some((d) => d.matches > 0) && (
+        <Panel title={t.heroes.durationTitle} hint={fill(t.heroes.noteAll, { days: PROFILE_DAYS })} bodyClass="px-4 pb-4">
+          <DeltaBars lang={lang} items={durationItems} />
+        </Panel>
+      )
+    }
+  </div>
+
+  {/* 판수별 | 라인전 */}
+  <div class="grid grid-cols-[minmax(0,1fr)] gap-4 lg:grid-cols-2">
+    {
+      laneOnly && (
+        <Panel title={t.heroes.masteryTitle} hint={`${t.heroes.masteryNote} · ${t.heroes.basisUpper}`} class="flex flex-col" bodyClass="flex-1 px-4 pb-4">
+          <span slot="meta" class="chip ml-auto text-paper-400">{tt.lowSample}</span>
+          <ol class="grid grid-cols-2 gap-2 opacity-40" aria-hidden="true">
+            {MASTERY_BUCKETS.map((b) => (
+              <li class="rounded-md bg-ink-850 px-3.5 py-3">
+                <p class="text-xs font-semibold text-paper-200">{rangeLabel(b)}</p>
+                <p class="mt-0.5 text-2xl font-bold tracking-tight text-paper-400">—</p>
+              </li>
+            ))}
+          </ol>
+        </Panel>
+      )
+    }
+    {
+      mastery && (
+        <Panel title={t.heroes.masteryTitle} hint={`${t.heroes.masteryNote} · ${t.heroes.basisUpper}`} class="flex flex-col" bodyClass="flex-1 px-4 pb-4">
+          <ol class="grid grid-cols-2 gap-2">
+            {mastery.map((b) => (
+              <li class="rounded-md bg-ink-850 px-3.5 py-3">
+                <p class="text-xs font-semibold text-paper-200">{rangeLabel(b)}</p>
+                {b.winRate !== null ? (
+                  <p class:list={['mt-0.5 text-2xl font-bold tracking-tight tabular-nums', masteryTone(b.winRate, b.average)]}>{pct(b.winRate)}</p>
+                ) : (
+                  <p class="mt-1.5 text-sm text-paper-400">{t.heroes.masteryFew}</p>
+                )}
+                <p class="mt-1 text-xs text-paper-400 tabular-nums">
+                  {fill(t.heroes.masteryAvg, { n: pct(b.average) })} · {fill(t.heroes.masteryGames, { n: formatNumber(lang, b.matches) })}
+                </p>
+              </li>
+            ))}
+          </ol>
+        </Panel>
+      )
+    }
+    {
+      lane && (
+        <Panel title={t.heroes.laneTitle} hint={`${t.heroes.noteLane} · ${fill(t.heroes.matchCount, { n: formatNumber(lang, lane.lanes) })} · ${tt.laneNote}`} class="flex flex-col" bodyClass="flex flex-1 flex-col justify-center px-4 pb-4">
+          <div class="flex h-2.5 overflow-hidden rounded-full bg-ink-700" aria-hidden="true">
+            <span class="h-full bg-buff" style={`width:${lane.win}%`} />
+            <span class="h-full bg-paper-500/60" style={`width:${lane.draw}%`} />
+            <span class="h-full bg-nerf" style={`width:${lane.loss}%`} />
+          </div>
+          <dl class="mt-3 grid grid-cols-3 gap-2 text-center sm:grid-cols-5">
+            {[
+              { label: t.heroes.laneRank, value: `${lane.place}`, sub: `/${lane.count}`, tone: lane.place <= 5 ? 'text-brass-200' : 'text-paper-50' },
+              { label: tt.laneWin, value: pct(lane.win), tone: 'text-buff' },
+              { label: tt.laneDraw, value: pct(lane.draw), tone: 'text-paper-200' },
+              { label: tt.laneLoss, value: pct(lane.loss), tone: 'text-nerf' },
+              { label: tt.laneLead, value: `${lane.lead >= 0 ? '+' : '−'}${formatNumber(lang, Math.abs(Math.round(lane.lead)))}`, tone: 'text-paper-50', hint: tt.laneLeadHint },
+            ].map((c) => (
+              <div class="rounded-md bg-ink-850 px-2 py-2" title={c.hint}>
+                <dt class="truncate text-2xs text-paper-400">{c.label}</dt>
+                <dd class:list={['mt-0.5 text-lg font-bold tabular-nums', c.tone]}>
+                  {c.value}
+                  {c.sub && <span class="text-xs font-normal text-paper-400">{c.sub}</span>}
+                </dd>
+              </div>
+            ))}
+          </dl>
+        </Panel>
+      )
+    }
+    {
+      masteryOnly && (
+        <Panel title={t.heroes.laneTitle} hint={`${t.heroes.noteLane} · ${tt.laneNote}`} class="flex flex-col" bodyClass="flex flex-1 flex-col justify-center px-4 pb-4">
+          <span slot="meta" class="chip ml-auto text-paper-400">{tt.lowSample}</span>
+          <div class="opacity-40" aria-hidden="true">
+            <div class="h-2.5 rounded-full bg-ink-700" />
+            <div class="mt-3 grid grid-cols-3 gap-2 text-center sm:grid-cols-5">
+              {[t.heroes.laneRank, tt.laneWin, tt.laneDraw, tt.laneLoss, tt.laneLead].map((label) => (
+                <div class="rounded-md bg-ink-850 px-2 py-2">
+                  <p class="truncate text-2xs text-paper-400">{label}</p>
+                  <p class="mt-0.5 text-lg font-bold text-paper-400">—</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        </Panel>
+      )
+    }
+  </div>
+</div>

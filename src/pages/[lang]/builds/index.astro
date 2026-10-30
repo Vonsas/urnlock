@@ -1,0 +1,25 @@
+---
+/** 빌드 — 모든 영웅의 프로 빌드 · 최상위권 인기 빌드를 최근 수정 순으로. 화면은 scripts/builds.ts 가 그린다 */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHead from '../../../components/PageHead.astro';
+import { LOCALES, toLocale, useTranslations } from '../../../i18n';
+import { buildsPageConfig } from '../../../lib/builds-page';
+
+export function getStaticPaths() {
+  return LOCALES.map((lang) => ({ params: { lang } }));
+}
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const configJson = await buildsPageConfig(lang);
+---
+
+<BaseLayout lang={lang} seoTitle={t.seo.builds} title={t.nav.builds} description={t.buildsPage.lede}>
+  <PageHead title={t.nav.builds} />
+  <div data-builds-view></div>
+  <p class="mt-8 max-w-3xl text-xs text-paper-400">{t.buildsPage.note}</p>
+  <script type="application/json" id="builds-config" set:html={configJson} />
+</BaseLayout>
+
+<script>
+  import '../../../scripts/builds.ts';
+</script>

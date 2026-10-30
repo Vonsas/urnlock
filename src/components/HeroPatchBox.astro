@@ -1,0 +1,74 @@
+---
+/**
+ * 영웅 머리 오른쪽 — 이 영웅의 최근 패치 변경 (패치노트에서 이 영웅 묶음을 찾아, 번역된 줄 그대로).
+ * 가장 최근에 바뀐 패치 하나를 보여주고, 최근 패치(API 가 주는 범위)에서 바뀐 적이 없으면 그렇게 적는다.
+ * 앞 SHOW 줄만 보이고 나머지는 같은 자리에서 펼친다 (2026-10-25 사용자: '외 n줄' 링크로는 무엇이 바뀌었는지 모르고, 다 펼쳐 두면 너무 길다).
+ */
+import type { PatchNote } from '../data';
+import { localePath, useTranslations, type Locale } from '../i18n';
+import { fill } from '../lib/format';
+
+interface Props {
+  lang: Locale;
+  heroSlug: string;
+  notes: PatchNote[];
+}
+const { lang, heroSlug, notes } = Astro.props;
+const t = useTranslations(lang);
+const SHOW = 5;
+
+const hit = notes
+  .map((note) => ({ note, group: note.sections.flatMap((s) => s.blocks).find((b) => b.type === 'group' && b.kind === 'hero' && b.slug === heroSlug) }))
+  .find((x) => x.group);
+const lines = hit?.group?.type === 'group' ? hit.group.lines : [];
+const isLatest = hit && notes[0]?.id === hit.note.id;
+const href = hit && localePath(lang, isLatest ? 'patches' : `patches/${hit.note.id}`);
+---
+
+<section aria-labelledby="hero-patch-title" class="flex min-w-0 flex-col">
+  <div class="flex items-baseline gap-2">
+    <h2 id="hero-patch-title" class="text-sm font-semibold text-paper-50">{t.heroes.patchBoxTitle}</h2>
+    {
+      hit && (
+        <span class="text-xs text-paper-500 tabular-nums">
+          {hit.note.date.replaceAll('-', '.')}
+          {isLatest && <span class="ml-1.5 rounded-xs bg-brass-400/15 px-1 font-semibold text-brass-200">{t.heroes.patchBoxLatest}</span>}
+        </span>
+      )
+    }
+  </div>
+  {
+    hit ? (
+      <>
+        <ul class="mt-2.5 grid gap-1.5 text-sm text-paper-200">
+          {lines.slice(0, SHOW).map((l) => (
+            <li class="flex gap-2.5">
+              <span aria-hidden="true" class="mt-[0.55em] size-1 flex-none bg-paper-500" />
+              <span class="line-clamp-2" title={l.orig}>{l.text}</span>
+            </li>
+          ))}
+        </ul>
+        {lines.length > SHOW && (
+          <details class="group text-sm text-paper-200">
+            <summary class="mt-1.5 cursor-pointer list-none text-xs font-semibold text-paper-400 hover:text-paper-50 group-open:hidden [&::-webkit-details-marker]:hidden">
+              {fill(t.heroes.patchBoxMore, { n: lines.length - SHOW })} ▾
+            </summary>
+            <ul class="mt-1.5 grid gap-1.5">
+              {lines.slice(SHOW).map((l) => (
+                <li class="flex gap-2.5">
+                  <span aria-hidden="true" class="mt-[0.55em] size-1 flex-none bg-paper-500" />
+                  <span title={l.orig}>{l.text}</span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
+        <a href={href} class="mt-auto pt-3 text-xs font-semibold text-brass-400 hover:text-brass-200">
+          {t.heroes.patchBoxOpen} →
+        </a>
+      </>
+    ) : (
+      <p class="mt-2.5 text-sm text-paper-400">{fill(t.heroes.patchBoxNone, { n: notes.length })}</p>
+    )
+  }
+</section>

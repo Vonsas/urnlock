@@ -1,0 +1,30 @@
+---
+/** 패치노트 — 가장 최근 패치를 바로 보여준다 (나머지는 오른쪽 목록 → /patches/{날짜}) */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHead from '../../../components/PageHead.astro';
+import PatchNoteView from '../../../components/PatchNoteView.astro';
+import { LOCALES, toLocale, useTranslations } from '../../../i18n';
+import { getHeroes, getItems, getPatchNotes } from '../../../data';
+
+export function getStaticPaths() {
+  return LOCALES.map((lang) => ({ params: { lang } }));
+}
+
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const [notes, heroes, items] = await Promise.all([getPatchNotes(lang), getHeroes(lang), getItems(lang)]);
+const note = notes[0];
+---
+
+<BaseLayout lang={lang} seoTitle={t.seo.patches} title={t.nav.patches} description={t.patches.lede}>
+  {
+    note ? (
+      <PatchNoteView lang={lang} note={note} notes={notes} heroes={heroes} items={items} />
+    ) : (
+      <>
+        <PageHead title={t.nav.patches} />
+        <p class="text-paper-400">{t.patches.empty}</p>
+      </>
+    )
+  }
+</BaseLayout>

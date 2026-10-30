@@ -1,0 +1,24 @@
+---
+/**
+ * 아이템 아이콘 — 상점 그림이 있으면 그림을, 없으면 분류색을 옅게 깐 면 + 머리글자.
+ * 테두리는 분류색이라 그림이 있어도 무기/활력/영혼이 구분된다 (그림 위에 겹쳐 그린다).
+ * 모양은 global.css 의 .item-icon (빌드 탭에 수백 개라 짧은 이름으로, 2026-10-14).
+ */
+import type { ItemCategory } from '../data';
+import { gameImage } from '../lib/images';
+import { initialsFor } from '../lib/tint';
+
+interface Props {
+  slug: string;
+  category: ItemCategory;
+  image?: string;
+  class?: string;
+}
+const { slug, category, image, class: className } = Astro.props;
+// 표시 크기는 최대 56px 이라 한 가지(112px)만 만든다
+const src = await gameImage(image, 112, 112);
+---
+
+<span aria-hidden="true" class:list={['item-icon', `ii-${category}`, className]}>
+  {src ? <img src={src} alt="" loading="lazy" decoding="async" /> : initialsFor(slug)}
+</span>

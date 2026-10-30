@@ -1,0 +1,87 @@
+---
+/**
+ * 헤더 검색창 — 플레이어 전용 (deadlock-api Steam 이름 검색, 치는 동안). 처리는 src/scripts/search.ts.
+ * 영웅·아이템은 각 페이지 안 검색을 쓴다. 첫 페이지는 헤더 대신 본문에 큰 검색창(size="lg") 하나를 둔다.
+ */
+import { localePath, useTranslations, type Locale } from '../i18n';
+import { PLAYER_API_BASE } from '../data';
+import type { SearchConfig } from '../scripts/search';
+
+interface Props {
+  lang: Locale;
+  class?: string;
+  size?: 'md' | 'lg';
+}
+const { lang, class: className, size = 'md' } = Astro.props;
+const lg = size === 'lg';
+const t = useTranslations(lang);
+
+const config: SearchConfig = {
+  api: PLAYER_API_BASE,
+  playersPath: localePath(lang, 'players'),
+  t: {
+    searching: t.nav.searchingPlayers,
+    noPlayers: t.nav.searchNoPlayers,
+    allPlayers: t.nav.searchAllPlayers,
+    byId: t.nav.searchById,
+  },
+};
+const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
+---
+
+<div data-search class:list={['relative', className]}>
+  <label class="sr-only" for="site-search">{t.nav.search}</label>
+  <div class:list={['flex', lg ? 'h-12' : 'h-10']}>
+    <!-- 왼쪽 꼬리표: 무엇을 검색하는지 (OP.GG 의 지역 선택 자리) -->
+    <span
+      aria-hidden="true"
+      class:list={['flex flex-none items-center rounded-l-sm bg-brass-400 font-bold text-ink-950', lg ? 'px-4 text-sm' : 'px-3 text-[0.8125rem]']}
+    >
+      {t.nav.players}
+    </span>
+    <div class="relative min-w-0 flex-1">
+      <svg
+        aria-hidden="true"
+        viewBox="0 0 16 16"
+        class="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-paper-500"
+        fill="none"
+        stroke="currentColor"
+        stroke-width="1.6"
+        stroke-linecap="round"
+      >
+        <circle cx="7" cy="7" r="4.75"></circle>
+        <path d="m10.5 10.5 3.5 3.5"></path>
+      </svg>
+      <input
+        id="site-search"
+        type="search"
+        autocomplete="off"
+        role="combobox"
+        aria-expanded="false"
+        aria-controls="site-search-results"
+        aria-autocomplete="list"
+        placeholder={t.nav.search}
+        data-search-input
+        class:list={['peer field field-icon rounded-l-none border-transparent bg-ink-950 pr-8 hover:border-transparent', lg && 'h-12 text-base']}
+      />
+      <!-- 입력 중에는 지우기(×) 버튼과 겹치므로 숨긴다 -->
+      <kbd
+        aria-hidden="true"
+        class="pointer-events-none absolute top-1/2 right-2 hidden -translate-y-1/2 rounded-xs bg-ink-800 px-1.5 text-2xs leading-5 text-paper-500 lg:block lg:peer-[:not(:placeholder-shown)]:hidden"
+        >/</kbd
+      >
+    </div>
+  </div>
+  <ul
+    id="site-search-results"
+    role="listbox"
+    hidden
+    data-search-results
+    class="absolute top-full right-0 left-0 z-40 mt-1 max-h-[28rem] overflow-auto rounded-sm border border-line-strong bg-ink-850 p-1 shadow-[0_16px_40px_rgb(0_0_0/0.55)]"
+  >
+  </ul>
+</div>
+<script type="application/json" id="search-config" set:html={configJson} />
+<script>
+  import '../scripts/search.ts';
+</script>

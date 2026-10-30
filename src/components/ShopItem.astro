@@ -1,0 +1,153 @@
+---
+/**
+ * 상점 아이템 카드 — 게임 상점처럼 정사각형 그림 + 아래 이름. 액티브 아이템은 그림 위에 ACTIVE 띠.
+ * - 마우스를 올리면(마우스 기기만): 짧은 요약 — 이름·분류·가격 + 핵심 수치 몇 개 + 재사용 대기
+ * - 클릭·탭·Enter: 상세 창 (ItemDetail). 내용은 <template> 에 넣어 두고 페이지 스크립트가 공용 <dialog> 에 옮긴다
+ */
+import type { Item, ItemCategory, ItemEffectValue } from '../data';
+import { useTranslations, type Locale } from '../i18n';
+import { fill, formatItemStatValue, formatNumber } from '../lib/format';
+import { initialsFor } from '../lib/tint';
+import ScaleIcon from './ScaleIcon.astro';
+import ItemDetail from './ItemDetail.astro';
+
+export interface ShopLookupEntry {
+  name: string;
+  src?: string;
+  category: ItemCategory;
+}
+
+interface Props {
+  item: Item;
+  lang: Locale;
+  /** slug → 이름·그림 (하위/상위 아이템 표시용, 그림 주소는 페이지에서 한 번만 만든다) */
+  lookup: Map<string, ShopLookupEntry>;
+  alt?: string;
+  dark?: boolean;
+}
+const { item: i, lang, lookup, alt, dark = false } = Astro.props;
+const t = useTranslations(lang);
+const tip = t.items.tip;
+const src = lookup.get(i.slug)?.src;
+
+const catText = { weapon: 'text-weapon', vitality: 'text-vitality', spirit: 'text-spirit' } as const;
+const toneText = (v: ItemEffectValue) =>
+  v.negative
+    ? 'text-nerf'
+    : { weapon: 'text-weapon', spirit: 'text-spirit', vitality: 'text-vitality', neutral: 'text-paper-50' }[v.tone];
+const num = (n: number) => formatNumber(lang, n, 3);
+
+// 요약: 패시브·액티브의 핵심 수치 → 없으면 기본 효과. 최대 4개
+const effects = i.effects ?? [];
+const triggered = effects.filter((s) => s.kind !== 'innate');
+let summary = triggered.flatMap((s) => s.blocks.flatMap((b) => b.key));
+if (!summary.length) summary = effects.filter((s) => s.kind === 'innate').flatMap((s) => s.blocks.flatMap((b) => [...b.key, ...b.values]));
+summary = summary.slice(0, 4);
+const cooldown = triggered.find((s) => s.cooldown)?.cooldown;
+import SoulIcon from './SoulIcon.astro';
+---
+
+<li
+  id={i.slug}
+  data-filter-item
+  data-tip-host
+  data-name={i.name}
+  data-alt={alt}
+  data-category={i.category}
+  data-active={String(i.isActive)}
+  class="has-tip group/item scroll-mt-40"
+>
+  <button
+    type="button"
+    data-open-item={i.slug}
+    aria-haspopup="dialog"
+    class:list={[
+      'flex h-full w-full flex-col rounded-md p-[3px] text-left shadow-[0_1px_0_rgb(0_0_0/0.25)] ring-1 transition-[box-shadow] duration-150 outline-none',
+      'hover:ring-2 focus-visible:ring-2 group-target/item:ring-2',
+      dark
+        ? 'bg-[#2c2a26] ring-black/60 hover:ring-paper-200 focus-visible:ring-paper-200 group-target/item:ring-brass-400'
+        : 'bg-shop-card ring-black/20 hover:ring-shop-ink focus-visible:ring-shop-ink group-target/item:ring-brass-600',
+    ]}
+  >
+    <span class="relative block aspect-square overflow-hidden rounded-sm bg-ink-900">
+      {
+        src ? (
+          <img src={src} alt="" loading="lazy" decoding="async" class="size-full object-cover" />
+        ) : (
+          <span class="grid size-full place-items-center text-sm font-bold text-paper-400">{initialsFor(i.slug)}</span>
+        )
+      }
+      {
+        i.isActive && (
+          <span class="absolute inset-x-0 top-0 bg-black/80 py-px text-center text-[0.5625rem] leading-3 font-bold tracking-[0.08em] text-paper-50 uppercase">
+            {t.items.active}
+          </span>
+        )
+      }
+    </span>
+    <span
+      class:list={[
+        'mt-1 line-clamp-2 min-h-[2lh] px-0.5 text-center text-[0.6875rem] leading-[1.15] font-semibold',
+        dark ? 'text-paper-50' : 'text-shop-ink',
+      ]}
+    >
+      {i.name}
+    </span>
+  </button>
+
+  <!-- 마우스를 올렸을 때의 짧은 요약 -->
+  <div class="tip w-64!" role="tooltip">
+    <div class="flex items-start justify-between gap-3 px-3 pt-2.5 pb-2">
+      <div class="min-w-0">
+        <p class="leading-tight font-bold text-paper-50">{i.name}</p>
+        <p class:list={['mt-0.5 text-2xs font-semibold', catText[i.category]]}>
+          {t.items.categories[i.category]} · {fill(t.items.tier, { n: i.tier })}
+          {i.isActive && <span class="text-brass-400"> · {t.items.active}</span>}
+        </p>
+      </div>
+      <p class="flex flex-none items-center gap-1.5 text-sm font-bold text-paper-50 tabular-nums">
+        <SoulIcon />
+        {formatNumber(lang, i.cost)}
+      </p>
+    </div>
+    {
+      (summary.length > 0 || cooldown || i.stats.length > 0) && (
+        <ul class="space-y-0.5 border-t border-line px-3 py-2 text-xs">
+          {summary.length > 0
+            ? summary.map((v) => (
+                <li class="flex items-baseline justify-between gap-3">
+                  <span class="min-w-0 truncate text-paper-400">{v.label}</span>
+                  <span class="flex-none tabular-nums">
+                    <span class:list={['font-semibold', toneText(v)]}>{v.value}</span>
+                    {v.scale && (
+                      <span class:list={['ml-1 text-[0.625rem]', v.scale.kind === 'spirit' ? 'text-spirit' : 'text-boon']}>
+                        <ScaleIcon kind={v.scale.kind} label={v.scale.kind === 'boon' ? t.heroes.perBoon : t.heroes.stat.spiritPower} />
+                        {fill(v.scale.kind === 'spirit' ? tip.spiritScale : tip.boonScale, { n: num(v.scale.amount) })}
+                      </span>
+                    )}
+                  </span>
+                </li>
+              ))
+            : i.stats.slice(0, 4).map((s) => (
+                <li class="flex justify-between gap-3">
+                  <span class="text-paper-400">{t.items.stat[s.key]}</span>
+                  <span class="font-semibold text-paper-50 tabular-nums">{formatItemStatValue(lang, s)}</span>
+                </li>
+              ))}
+          {cooldown && (
+            <li class="flex justify-between gap-3">
+              <span class="text-paper-400">{tip.cooldown}</span>
+              <span class="font-semibold text-paper-50 tabular-nums">{fill(tip.seconds, { n: num(cooldown) })}</span>
+            </li>
+          )}
+        </ul>
+      )
+    }
+    <p class="border-t border-line px-3 py-1.5 text-[0.625rem] text-paper-500">{tip.clickHint}</p>
+  </div>
+
+  <!-- 클릭하면 상세 창으로 옮겨 그린다 -->
+  <template data-item-detail={i.slug}>
+    <ItemDetail item={i} lang={lang} lookup={lookup} />
+  </template>
+</li>

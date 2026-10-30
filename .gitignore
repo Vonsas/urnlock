@@ -1,0 +1,35 @@
+# build output
+dist/
+# generated types
+.astro/
+
+# dependencies
+node_modules/
+
+# logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+
+
+# environment variables — .env.local(vercel env pull 기본) · .env.production 등 모두 (2026-10-30 저장소 공개 전 점검)
+.env*
+# Cloudflare wrangler 로컬 비밀값 · 상태
+.dev.vars
+.wrangler/
+
+# macOS-specific files
+.DS_Store
+
+# jetbrains setting folder
+.idea/
+
+# Vercel
+.vercel/
+
+# Claude Code 개인 설정
+.claude/settings.local.json
+
+# API 응답 캐시 (빌드 시 생성)
+.cache/

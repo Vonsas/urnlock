@@ -1,0 +1,100 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": "astro",
+  "installCommand": "npx --yes pnpm@12.6.0 install --frozen-lockfile",
+  "buildCommand": "npx --yes pnpm@12.6.0 run build",
+  "ignoreCommand": "bash tools/ignore-build.sh",
+  "outputDirectory": "dist",
+  "regions": [
+    "hnd1"
+  ],
+  "redirects": [
+    {
+      "source": "/:lang(ko|en|zh)/patches/:id(2026-10-02|2026-10-03|2026-10-07|2026-10-10)/",
+      "destination": "/:lang/patches/",
+      "permanent": true
+    },
+    {
+      "source": "/:lang(ko|en|zh)/patches/:id(2026-10-02|2026-10-03|2026-10-07|2026-10-10)",
+      "destination": "/:lang/patches/",
+      "permanent": true
+    },
+    {
+      "source": "/:lang(ko|en|zh)/heroes/doorman/",
+      "destination": "/:lang/heroes/the-doorman/",
+      "permanent": true
+    },
+    {
+      "source": "/:lang(ko|en|zh)/heroes/doorman",
+      "destination": "/:lang/heroes/the-doorman/",
+      "permanent": true
+    }
+  ],
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "Content-Security-Policy",
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://static.urnlock.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://static.urnlock.com; img-src 'self' data: blob: https:; font-src 'self' data: https://static.urnlock.com; connect-src 'self' https://api.deadlock-api.com https://cloudflareinsights.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+        },
+        {
+          "key": "X-Content-Type-Options",
+          "value": "nosniff"
+        },
+        {
+          "key": "X-Frame-Options",
+          "value": "DENY"
+        },
+        {
+          "key": "Referrer-Policy",
+          "value": "strict-origin-when-cross-origin"
+        },
+        {
+          "key": "Permissions-Policy",
+          "value": "camera=(), microphone=(), geolocation=(), browsing-topics=()"
+        }
+      ]
+    },
+    {
+      "source": "/_astro/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        },
+        {
+          "key": "Access-Control-Allow-Origin",
+          "value": "*"
+        }
+      ]
+    },
+    {
+      "source": "/guides-snapshot.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/guides-snapshot-full.json",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=0, must-revalidate"
+        }
+      ]
+    },
+    {
+      "source": "/data/(.*)",
+      "headers": [
+        {
+          "key": "Cache-Control",
+          "value": "public, max-age=31536000, immutable"
+        }
+      ]
+    }
+  ]
+}

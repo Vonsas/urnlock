@@ -1,0 +1,37 @@
+---
+/** 영웅 목록 타일 — 초상, 이름. compact 는 첫 페이지용 작은 타일 */
+import HeroPortrait from './HeroPortrait.astro';
+import type { HeroSummary } from '../data';
+import { localePath, type Locale } from '../i18n';
+
+interface Props {
+  hero: HeroSummary;
+  lang: Locale;
+  compact?: boolean;
+  alt?: string;
+}
+const { hero: h, lang, compact = false, alt } = Astro.props;
+---
+
+<li data-filter-item data-name={h.name} data-alt={alt}>
+  <a href={localePath(lang, `heroes/${h.slug}`)} class="group block h-full">
+    <HeroPortrait
+      slug={h.slug}
+      name={h.name}
+      image={h.image}
+      size={compact ? 'md' : 'lg'}
+      class:list={[
+        'w-full ring-1 ring-line transition-[box-shadow] duration-150 ring-inset group-hover:ring-2 group-hover:ring-brass-400/70',
+        compact ? 'aspect-square' : 'aspect-[280/380]',
+      ]}
+    />
+    <p
+      class:list={[
+        'mt-1.5 truncate font-semibold text-paper-200 transition-colors duration-150 group-hover:text-paper-50',
+        compact ? 'text-center text-xs' : 'text-sm',
+      ]}
+    >
+      {h.name}
+    </p>
+  </a>
+</li>

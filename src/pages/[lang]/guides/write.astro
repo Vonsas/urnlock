@@ -1,0 +1,25 @@
+---
+/** 가이드 쓰기 — 스팀 인증한 사람만 (아니면 인증 안내). ?hero=slug 로 영웅을 미리 고른다 (scripts/guides.ts) */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHead from '../../../components/PageHead.astro';
+import { LOCALES, toLocale, useTranslations } from '../../../i18n';
+import { guidesPageConfig } from '../../../lib/guides-page';
+
+export function getStaticPaths() {
+  return LOCALES.map((lang) => ({ params: { lang } }));
+}
+
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const configJson = await guidesPageConfig(lang, 'write');
+---
+
+<BaseLayout lang={lang} title={t.guides.write} noindex>
+  <PageHead title={t.guides.write} />
+  <div data-guides-view></div>
+  <script type="application/json" id="guides-config" set:html={configJson} />
+</BaseLayout>
+
+<script>
+  import '../../../scripts/guides.ts';
+</script>

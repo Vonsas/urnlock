@@ -1,0 +1,136 @@
+---
+/** 능력 카드 — 게임 툴팁 구성: 머리(번호·이름·종류·재사용 대기) → 수치 칩 → 설명 → 강화 3단 */
+import ScaleIcon from './ScaleIcon.astro';
+import type { Ability, AbilityScaleStat } from '../data';
+import { useTranslations, type Locale } from '../i18n';
+import { fill, formatNumber } from '../lib/format';
+import { gameImage } from '../lib/images';
+
+interface Props {
+  ability: Ability;
+  lang: Locale;
+}
+const { ability: a, lang } = Astro.props;
+const t = useTranslations(lang);
+const num = (n: number) => formatNumber(lang, n);
+const isUlt = a.slot === 4;
+// 게임 능력 아이콘은 흰색 그림 — 번호 자리에 넣는다 (번호는 '능력 1' 문구에 이미 있음)
+const icon = await gameImage(a.image, 72, 72);
+
+// 계수 대상 스탯 이름과 색 — 마력은 보라, 무기·근접은 주황, 부운은 황동
+const scaleName: Record<AbilityScaleStat, string> = {
+  spiritPower: t.heroes.stat.spiritPower,
+  boons: t.heroes.boons,
+  weaponDamage: t.items.stat.weaponDamage,
+  lightMelee: t.heroes.stat.lightMelee,
+};
+// 공식 아이콘이 있는 계수 — 글자 대신 아이콘
+const iconKind: Partial<Record<AbilityScaleStat, 'boon' | 'spirit' | 'weapon' | 'melee'>> = {
+  boons: 'boon',
+  spiritPower: 'spirit',
+  weaponDamage: 'weapon',
+  lightMelee: 'melee',
+};
+// '{stat} 계수 +n' 같은 문구에서 {stat} 자리에 아이콘을 넣기 위해 나눈다
+const splitStat = (text: string) => text.split('{stat}');
+const scaleTone: Record<AbilityScaleStat, string> = {
+  spiritPower: 'text-spirit',
+  boons: 'text-boon',
+  weaponDamage: 'text-weapon',
+  lightMelee: 'text-weapon',
+};
+
+const facts = [
+  a.charges !== undefined && [t.heroes.charges, num(a.charges)],
+  a.duration !== undefined && [t.heroes.duration, `${num(a.duration)}s`],
+  a.range !== undefined && [t.heroes.range, `${num(a.range)}m`],
+].filter(Boolean) as [string, string][];
+---
+
+<article class:list={['flex flex-col rounded-lg border bg-ink-900', isUlt ? 'border-copper-400/30' : 'border-line']}>
+  <header class="flex items-center gap-3.5 px-5 pt-5">
+    <span
+      aria-hidden="true"
+      class:list={[
+        'grid size-12 flex-none place-items-center rounded-md text-lg font-bold',
+        isUlt ? 'bg-copper-400/15 text-copper-400' : 'bg-ink-800 text-paper-200',
+      ]}
+    >
+      {icon ? <img src={icon} alt="" loading="lazy" decoding="async" class="size-9 object-contain" /> : a.slot}
+    </span>
+    <div class="min-w-0 flex-1">
+      <p class:list={['text-xs font-medium', isUlt ? 'text-copper-400' : 'text-paper-500']}>
+        {isUlt ? t.heroes.ultimate : fill(t.heroes.abilitySlot, { n: a.slot })} · {
+          a.kind === 'active' ? t.heroes.active : t.heroes.passive
+        }
+      </p>
+      <h3 class="truncate text-lg font-bold text-paper-50">{a.name}</h3>
+    </div>
+    {
+      a.cooldown !== undefined && (
+        <p class="flex-none text-right">
+          <span class="block text-xs text-paper-500">{t.heroes.cooldown}</span>
+          <span class="text-lg font-bold text-paper-50 tabular-nums">{num(a.cooldown)}s</span>
+        </p>
+      )
+    }
+  </header>
+
+  <div class="flex-1 px-5 pt-3.5 pb-5">
+    {
+      facts.length > 0 && (
+        <ul class="mb-3 flex flex-wrap gap-1.5">
+          {facts.map(([k, v]) => (
+            <li class="chip">
+              <span class="font-medium text-paper-500">{k}</span>
+              <span class="tabular-nums">{v}</span>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+    <p class="text-sm leading-relaxed text-paper-200">{a.description}</p>
+    {
+      a.stats.length > 0 && (
+        <dl class="mt-3.5 grid gap-x-6 sm:grid-cols-2">
+          {a.stats.map((s) => (
+            <div class="flex items-baseline justify-between gap-3 border-t border-line py-1.5">
+              <dt class="min-w-0 text-[0.8125rem] text-paper-400">{s.label}</dt>
+              <dd class="text-right text-sm whitespace-nowrap tabular-nums">
+                <span class="font-semibold text-paper-50">{`${num(s.value)}${s.unit}`}</span>
+                {s.scale && (
+                  <span class:list={['ml-1 text-xs font-medium', scaleTone[s.scale.stat]]}>
+                    +{iconKind[s.scale.stat] ? <ScaleIcon kind={iconKind[s.scale.stat]!} label={scaleName[s.scale.stat]} /> : scaleName[s.scale.stat]}×{num(s.scale.factor)}
+                  </span>
+                )}
+              </dd>
+            </div>
+          ))}
+        </dl>
+      )
+    }
+  </div>
+
+  <ol class="grid grid-cols-3 gap-2 px-2.5 pb-2.5">
+    {
+      a.upgrades.map((u) => (
+        <li class="rounded-md bg-ink-850 px-3 py-2.5">
+          <p class="text-xs font-bold text-brass-400 tabular-nums">{fill(t.heroes.apCost, { n: u.cost })}</p>
+          <p class="mt-1 text-[0.8125rem] leading-snug text-paper-200">{u.text}</p>
+          {u.scaleBonus?.map((b) => (
+            <p class:list={['mt-1 text-xs font-medium', scaleTone[b.stat]]}>
+              {iconKind[b.stat]
+                ? splitStat(fill(t.heroes.scaleUp, { stat: '{stat}', n: num(b.factor), label: b.label })).map((part, n) => (
+                    <>
+                      {n > 0 && <ScaleIcon kind={iconKind[b.stat]!} label={scaleName[b.stat]} />}
+                      {part}
+                    </>
+                  ))
+                : fill(t.heroes.scaleUp, { stat: scaleName[b.stat], n: num(b.factor), label: b.label })}
+            </p>
+          ))}
+        </li>
+      ))
+    }
+  </ol>
+</article>

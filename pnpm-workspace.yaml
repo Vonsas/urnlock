@@ -1,0 +1,7 @@
+allowBuilds:
+  esbuild: true
+
+# 보안 패치 버전으로 올림 (2026-10-06 pnpm audit — 둘 다 빌드 도구 안쪽 부품, 방문자에게 가는 코드는 아님)
+overrides:
+  http-cache-semantics: ^4.3.0
+  source-map-js: ^1.2.2

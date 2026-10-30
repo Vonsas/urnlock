@@ -1,0 +1,25 @@
+---
+/** 정적 404 는 언어별로 나눌 수 없어 세 언어를 함께 보여준다 */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { allDictionaries, DEFAULT_LOCALE, LOCALE_META, localePath } from '../i18n';
+---
+
+<BaseLayout lang={DEFAULT_LOCALE} title="404">
+  <div class="py-14">
+    <h1 class="sr-only">404</h1>
+    <p class="text-8xl leading-none font-extrabold tracking-tight text-ink-700 tabular-nums">404</p>
+    <ul class="mt-8 divide-y divide-line border-y border-line">
+      {
+        allDictionaries().map(([code, d]) => (
+          <li lang={LOCALE_META[code].htmlLang} class="grid gap-x-6 gap-y-1 py-4 sm:grid-cols-[12rem_minmax(0,1fr)_auto] sm:items-baseline">
+            <h2 class="text-lg font-bold">{d.notFound.title}</h2>
+            <p class="text-paper-200">{d.notFound.body}</p>
+            <a href={localePath(code)} class="text-sm text-brass-400 hover:underline">
+              {d.common.backHome} →
+            </a>
+          </li>
+        ))
+      }
+    </ul>
+  </div>
+</BaseLayout>

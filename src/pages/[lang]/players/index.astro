@@ -1,0 +1,73 @@
+---
+/**
+ * 전적 검색 — 정적 페이지 하나에서 브라우저가 deadlock-api 를 직접 호출한다
+ * (플레이어는 빌드 때 미리 만들 수 없다). 주소: ?q=이름 → 검색 결과, ?id=계정 → 플레이어, ?match=ID → 매치 상세.
+ * 영웅·아이템 이름과 아이콘, 랭크 이름·휘장은 빌드 때 페이지에 JSON 으로 심는다.
+ */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHead from '../../../components/PageHead.astro';
+import { LOCALE_META, LOCALES, localePath, toLocale, useTranslations } from '../../../i18n';
+import { getHeroes, getItems, getRanks, PLAYER_API_BASE } from '../../../data';
+import { gameImage } from '../../../lib/images';
+import type { PlayerPageConfig } from '../../../scripts/players';
+
+export function getStaticPaths() {
+  return LOCALES.map((lang) => ({ params: { lang } }));
+}
+
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const [heroes, ranks, items] = await Promise.all([getHeroes(lang), getRanks(lang), getItems(lang)]);
+
+const config: PlayerPageConfig = {
+  api: PLAYER_API_BASE,
+  locale: LOCALE_META[lang].htmlLang,
+  heroPath: localePath(lang, 'heroes'),
+  heroes: Object.fromEntries(
+    await Promise.all(
+      heroes
+        .filter((h) => h.id !== undefined)
+        .map(async (h) => [h.id!, { name: h.name, slug: h.slug, icon: await gameImage(h.image?.small, 64, 64) }] as const),
+    ),
+  ),
+  // 매치 상세의 최종 아이템 — ItemIcon 과 같은 크기(112px)로 만들어 같은 파일을 재사용한다
+  items: Object.fromEntries(
+    await Promise.all(
+      items
+        .filter((i) => i.id !== undefined)
+        .map(async (i) => [i.id!, { name: i.name, category: i.category, icon: await gameImage(i.image, 112, 112) }] as const),
+    ),
+  ),
+  ranks: Object.fromEntries(
+    await Promise.all(ranks.map(async (r) => [r.tier, { name: r.name, icon: await gameImage(r.image, 96, 96) }] as const)),
+  ),
+  t: { ...t.players, souls: t.common.souls },
+};
+// </script> 로 JSON 이 끊기지 않게
+const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
+---
+
+<BaseLayout lang={lang} seoTitle={t.seo.players} title={t.players.title} description={t.players.lede}>
+  <PageHead title={t.players.title} />
+
+  <form data-player-search role="search" aria-label={t.players.searchLabel} class="flex max-w-2xl gap-2">
+    <span class="relative min-w-0 flex-1">
+      <svg aria-hidden="true" viewBox="0 0 16 16" class="pointer-events-none absolute top-1/2 left-3 size-4 -translate-y-1/2 text-paper-500" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.75"></circle><path d="m10.5 10.5 3.5 3.5"></path></svg>
+      <label class="sr-only" for="player-q">{t.players.searchLabel}</label>
+      <input id="player-q" name="q" type="search" required autocomplete="off" placeholder={t.players.searchPlaceholder} class="field field-icon h-11 text-base" />
+    </span>
+    <button type="submit" class="h-11 flex-none rounded-md bg-brass-400 px-5 font-bold text-ink-950 transition-colors duration-150 hover:bg-brass-200">
+      {t.players.search}
+    </button>
+  </form>
+
+  <div data-player-view aria-live="polite" class="mt-6"></div>
+
+  <p class="mt-10 max-w-3xl text-xs text-paper-400">{t.players.note}</p>
+
+  <script type="application/json" id="player-config" set:html={configJson} />
+</BaseLayout>
+
+<script>
+  import '../../../scripts/players.ts';
+</script>

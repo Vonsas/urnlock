@@ -1,0 +1,79 @@
+---
+/**
+ * 50% 기준 막대 — 구간마다 승률이 50% 보다 높으면 위(초록), 낮으면 아래(빨강)로. 랭크별 · 경기 길이별 승률이 쓴다.
+ * 세로 축은 50% 에서 위아래 같은 폭(가장 큰 차이를 2%p 단위로 올림, 최소 ±4%p). 판수가 적은 구간은 흐리게.
+ * 막대 끝에 승률 글씨를 쓸 때는 축을 한 칸 더 열어 둔다 — 59.7% 처럼 축 끝에 닿는 막대의 글씨가 패널 제목에 겹치던 문제.
+ * 막대에 마우스를 올리면 구간 이름 · 승률 · 판수 (scripts/tooltip.ts). 막대가 적으면(≤6) 막대 끝에 승률 글씨.
+ */
+import { useTranslations, type Locale } from '../i18n';
+import { fill, formatNumber, formatPercent } from '../lib/format';
+
+interface Props {
+  lang: Locale;
+  items: Array<{ name: string; label?: string; icon?: string; winRate: number; matches: number }>;
+  /** 이보다 판수가 적으면 흐리게 */
+  minMatches?: number;
+}
+const { lang, items, minMatches = 300 } = Astro.props;
+const t = useTranslations(lang);
+// 축은 판수가 충분한 구간만으로 정한다 — 판수 3판짜리 구간 하나가 축을 ±60%p 로 늘려 나머지 막대가 납작해졌다 (2026-10-14 점검).
+// 흐린 구간이 축을 넘으면 축 끝에서 잘린다. 모두 흐리면 그대로 전부로.
+const solid = items.filter((i) => i.matches >= minMatches);
+const maxDev = Math.max(...(solid.length ? solid : items).map((i) => Math.abs(i.winRate - 50)), 0);
+const showValues = items.length <= 6;
+// 글씨 자리: 막대 끝과 축 끝 사이에 최소 축 폭의 18% (h-40 의 약 14px = 글씨 한 줄)
+const scale = Math.max(4, Math.ceil((showValues ? maxDev / 0.82 : maxDev) / 2) * 2);
+---
+
+{
+  items.length > 0 && (
+    <figure class="m-0 select-none">
+      <div class="relative ml-9 h-40">
+        {[scale, scale / 2, 0, -scale / 2, -scale].map((d) => (
+          <div class:list={['absolute inset-x-0 border-t', d === 0 ? 'border-dashed border-paper-500' : 'border-line']} style={`top:${50 - (d / scale) * 50}%`}>
+            <span class="absolute -left-9 w-7 -translate-y-1/2 text-right text-2xs text-paper-500 tabular-nums">{50 + d}%</span>
+          </div>
+        ))}
+        <div class="absolute inset-0 flex gap-1.5 px-1 sm:gap-2">
+          {items.map((it) => {
+            const empty = it.matches === 0;
+            const dev = empty ? 0 : it.winRate - 50;
+            const h = (Math.min(Math.abs(dev), scale) / scale) * 50;
+            const faded = it.matches < minMatches;
+            return (
+              <div
+                class="relative flex-1 transition-colors duration-150 hover:bg-paper-50/6"
+                data-tip={`${it.name}\n${t.heroes.chartWinRate} ${formatPercent(lang, it.winRate)} · ${fill(t.heroes.matchCount, { n: formatNumber(lang, it.matches) })}`}
+              >
+                {!empty && <span
+                  class:list={['absolute inset-x-[18%]', dev >= 0 ? 'rounded-t-xs bg-buff' : 'rounded-b-xs bg-nerf', faded && 'opacity-35']}
+                  style={dev >= 0 ? `bottom:50%;height:${Math.max(h, 0.6)}%` : `top:50%;height:${Math.max(h, 0.6)}%`}
+                />}
+                {showValues && (
+                  <span
+                    class="absolute inset-x-0 text-center text-2xs font-semibold text-paper-200 tabular-nums"
+                    style={dev >= 0 ? `bottom:calc(50% + ${h}% + 2px)` : `top:calc(50% + ${h}% + 2px)`}
+                  >
+                    {empty ? '—' : formatPercent(lang, it.winRate)}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div class="mt-2 ml-9 flex gap-1.5 px-1 sm:gap-2">
+        {items.map((it) => (
+          <span class="flex flex-1 justify-center" title={it.name}>
+            {it.icon ? (
+              <img src={it.icon} alt={it.name} width="24" height="24" class="size-6" loading="lazy" />
+            ) : (
+              <span class="text-center text-2xs leading-tight text-paper-400">{it.label ?? it.name}</span>
+            )}
+          </span>
+        ))}
+      </div>
+    </figure>
+  )
+}
+

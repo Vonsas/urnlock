@@ -1,0 +1,111 @@
+---
+/**
+ * 첫 페이지 머리의 밤 도시 장면 (2026-10-03, 사용자가 보낸 레퍼런스 두 장 — 달 뜬 청록 스카이라인 · 남색 야경).
+ * 분위기는 색 두 개가 아니라 '빛과 깊이' 에서 나온다: 위는 어둡고 지평선으로 밝아지는 하늘, 광원 하나(달), 멀수록 밝고 가까울수록
+ * 어두운 건물 세 겹, 맨 앞 건물 색 = 페이지 배경이라 땅과 페이지가 끊김 없이 이어진다.
+ * 건물은 빌드 때 고정 시드로 만든 SVG (그림 출처 문제 없음). 색은 global.css 의 sky-* · city-* · moon · window 토큰.
+ */
+interface Props {
+  class?: string;
+  /** 달 표시 */
+  moon?: boolean;
+  /** 창문 불빛 양 (1 = 기본, 남색 야경처럼 불 켜진 도시는 3–4) */
+  lights?: number;
+  /** 다른 페이지 위쪽용 — 달을 작게 오른쪽으로 (제목과 겹치지 않게) */
+  compact?: boolean;
+}
+const { class: className, moon = true, lights = 1, compact = false } = Astro.props;
+
+// 고정 시드 난수 — 빌드마다 같은 스카이라인
+let seed = 20261003;
+const rand = () => ((seed = (seed * 1664525 + 1013904223) >>> 0) / 2 ** 32);
+const between = (a: number, b: number) => a + rand() * (b - a);
+
+const W = 1600;
+const H = 360;
+
+interface Layer {
+  path: string;
+  windows: Array<[number, number]>;
+}
+/**
+ * 한 겹의 건물 — 왼쪽부터 지붕선을 따라 점을 찍는다. 아르데코식 셋백(위로 갈수록 좁아지는 계단 0–2단), 큰 건물엔 가끔 첨탑,
+ * 작은 건물엔 가끔 안테나. 창문은 드문드문 (windowRate = 칸마다 켜질 확률).
+ */
+function layer(minH: number, maxH: number, minW: number, maxW: number, windowRate: number, tallEvery: number, gaps = true): Layer {
+  const pts: Array<[number, number]> = [[-40, H]];
+  const windows: Array<[number, number]> = [];
+  let x = -30;
+  let i = 0;
+  while (x < W + 30) {
+    const w = between(minW, maxW);
+    const tall = ++i % tallEvery === 0;
+    const h = tall ? between(maxH * 1.05, maxH * 1.4) : between(minH, maxH);
+    const steps = tall ? 2 : rand() < 0.3 ? 1 : 0;
+    const inset = w * 0.14;
+    const base = steps ? h * between(0.7, 0.82) : h;
+    const ys = Array.from({ length: steps + 1 }, (_, k) => H - (base + (steps ? ((h - base) * k) / steps : 0)));
+    // 왼쪽 벽 → 계단 올라가기
+    pts.push([x, ys[0]]);
+    for (let k = 1; k <= steps; k++) pts.push([x + k * inset, ys[k - 1]], [x + k * inset, ys[k]]);
+    const top = ys[steps];
+    const l = x + steps * inset;
+    const r = x + w - steps * inset;
+    const m = (l + r) / 2;
+    if (tall && rand() < 0.7) pts.push([m - 5, top], [m, top - between(30, 64)], [m + 5, top]);
+    else if (rand() < 0.18) {
+      const ah = between(14, 30);
+      pts.push([m - 1.5, top], [m - 1.5, top - ah], [m + 1.5, top - ah], [m + 1.5, top]);
+    }
+    // 계단 내려가기 → 오른쪽 벽
+    for (let k = steps; k >= 1; k--) pts.push([x + w - k * inset, ys[k]], [x + w - k * inset, ys[k - 1]]);
+    pts.push([x + w, ys[0]]);
+    for (let wy = top + 10; wy < H - 8; wy += 9) {
+      for (let wx = l + 5; wx < r - 6; wx += 8) if (rand() < windowRate) windows.push([wx, wy]);
+    }
+    x += w;
+    if (gaps && rand() < 0.15) {
+      const gap = between(4, 14);
+      pts.push([x, H], [x + gap, H]);
+      x += gap;
+    }
+  }
+  pts.push([W + 40, H]);
+  return { path: 'M' + pts.map(([px, py]) => `${px.toFixed(1)} ${py.toFixed(1)}`).join(' L') + ' Z', windows };
+}
+
+const far = layer(150, 230, 40, 90, 0.012 * lights, 5);
+const mid = layer(90, 170, 50, 110, 0.016 * lights, 6);
+// 맨 앞 겹은 틈 없이 — 틈으로 하늘이 바닥까지 보이면 페이지와 이어지는 경계가 끊긴다
+const near = layer(30, 110, 70, 150, 0.01 * lights, 7, false);
+---
+
+<div aria-hidden="true" class:list={['city-scene pointer-events-none absolute inset-0 overflow-hidden', className]}>
+  {moon && <div class:list={['absolute aspect-square rounded-full', compact ? 'city-moon-compact max-sm:hidden' : 'city-moon left-1/2 -translate-x-1/2']} />}
+  <svg viewBox={`0 0 ${W} ${H}`} preserveAspectRatio="xMidYMax slice" class="absolute inset-x-0 bottom-0 h-[62%] w-full">
+    <path d={far.path} fill="var(--color-city-far)" />
+    {far.windows.map(([x, y]) => <rect x={x} y={y} width="2.5" height="3.5" fill="var(--color-window)" opacity="0.55" />)}
+    <path d={mid.path} fill="var(--color-city-mid)" />
+    {mid.windows.map(([x, y]) => <rect x={x} y={y} width="2.5" height="3.5" fill="var(--color-window)" opacity="0.75" />)}
+    <path d={near.path} fill="var(--color-city-near)" />
+    <rect x="-40" y={H - 3} width={W + 80} height="6" fill="var(--color-city-near)" />
+    {near.windows.map(([x, y]) => <rect x={x} y={y} width="2.5" height="3.5" fill="var(--color-window)" opacity="0.9" />)}
+  </svg>
+</div>
+
+<style>
+  .city-scene {
+    background: linear-gradient(to bottom, var(--color-sky-top) 0%, var(--color-sky-horizon) 100%);
+  }
+  .city-moon-compact {
+    right: 14%;
+    bottom: 48%;
+    width: min(18vw, 7.5rem);
+    background: var(--color-moon);
+  }
+  .city-moon {
+    bottom: 12%;
+    width: min(46vw, 18rem);
+    background: var(--color-moon);
+  }
+</style>

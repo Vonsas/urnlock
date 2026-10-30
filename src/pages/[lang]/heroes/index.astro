@@ -1,0 +1,104 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHead from '../../../components/PageHead.astro';
+import HeroTile from '../../../components/HeroTile.astro';
+import HeroPortrait from '../../../components/HeroPortrait.astro';
+import { LOCALES, localePath, toLocale, useTranslations } from '../../../i18n';
+import { getHeroes } from '../../../data';
+import { formatNumber } from '../../../lib/format';
+
+export function getStaticPaths() {
+  return LOCALES.map((lang) => ({ params: { lang } }));
+}
+
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const [heroes, enHeroes] = await Promise.all([getHeroes(lang), getHeroes('en')]);
+const enName = new Map(enHeroes.map((h) => [h.slug, h.name]));
+const num = (n: number) => formatNumber(lang, n);
+
+const columns = [
+  { key: 'health', label: t.heroes.stat.health },
+  { key: 'dps', label: t.heroes.weaponStat.dps },
+  { key: 'speed', label: t.heroes.stat.moveSpeed },
+];
+---
+
+<BaseLayout lang={lang} seoTitle={t.seo.heroes} title={t.heroes.title} description={t.heroes.lede}>
+  <PageHead title={t.heroes.title} />
+
+  <div data-filter="heroes" data-view-mode="grid">
+    <!-- 도구 막대 -->
+    <div class="flex flex-wrap items-center gap-3">
+      <label class="sr-only" for="hero-q">{t.heroes.searchPlaceholder}</label>
+      <span class="relative w-full sm:w-auto">
+        <svg aria-hidden="true" viewBox="0 0 16 16" class="pointer-events-none absolute top-1/2 left-3 size-3.5 -translate-y-1/2 text-paper-500" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><circle cx="7" cy="7" r="4.75"></circle><path d="m10.5 10.5 3.5 3.5"></path></svg>
+      <input id="hero-q" type="search" data-filter-text placeholder={t.heroes.searchPlaceholder} class="field field-icon w-full sm:w-60" />
+      </span>
+      <span class="ml-auto text-xs text-paper-400 tabular-nums" data-filter-count data-template={t.common.shown}></span>
+      <div role="group" aria-label={t.heroes.viewLabel} class="seg">
+        <button type="button" data-view="grid" aria-pressed="true">{t.heroes.viewGrid}</button>
+        <button type="button" data-view="table" aria-pressed="false">{t.heroes.viewTable}</button>
+      </div>
+    </div>
+
+    <!-- 카드 -->
+    <ul data-pane="grid" class="panel mt-6 grid grid-cols-3 gap-x-3 gap-y-5 p-3 sm:grid-cols-[repeat(auto-fill,minmax(7rem,1fr))] sm:p-4">
+      {heroes.map((h) => <HeroTile hero={h} lang={lang} alt={enName.get(h.slug)} />)}
+    </ul>
+
+    <!-- 표 -->
+    <div data-pane="table" class="panel mt-6 overflow-x-auto">
+      <table class="w-full min-w-[30rem] text-sm">
+        <thead class="text-left text-xs text-paper-500">
+          <tr class="border-b border-line">
+            <th scope="col" class="sticky left-0 z-[1] bg-ink-900 px-4 py-3 font-semibold">
+              <button type="button" data-sort="name" class="hover:text-paper-50">{t.heroes.nameCol}</button>
+            </th>
+            {
+              columns.map((c) => (
+                <th scope="col" class="px-4 py-3 text-right font-semibold">
+                  <button type="button" data-sort={c.key} class="hover:text-paper-50">
+                    {c.label}
+                  </button>
+                </th>
+              ))
+            }
+          </tr>
+        </thead>
+        <tbody>
+          {
+            heroes.map((h) => (
+              <tr
+                data-filter-item
+                data-name={h.name}
+                data-alt={enName.get(h.slug)}
+                data-health={h.health}
+                data-dps={h.weaponDps}
+                data-speed={h.moveSpeed}
+                class="group border-t border-line transition-colors duration-150 hover:bg-ink-850"
+              >
+                {/* 이름 열은 왼쪽에 붙여 둔다 — 휴대폰에서 표를 옆으로 밀어도 어느 영웅인지 보이게 */}
+                <th scope="row" class="sticky left-0 z-[1] bg-ink-900 px-4 py-2 text-left font-semibold whitespace-nowrap transition-colors duration-150 group-hover:bg-ink-850">
+                  <a href={localePath(lang, `heroes/${h.slug}`)} class="flex items-center gap-2.5 hover:text-brass-200">
+                    <HeroPortrait slug={h.slug} name={h.name} image={h.image} size="sm" class="size-8 flex-none" />
+                    {h.name}
+                  </a>
+                </th>
+                <td class="px-4 py-2 text-right tabular-nums">{num(h.health)}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{num(h.weaponDps)}</td>
+                <td class="px-4 py-2 text-right tabular-nums">{num(h.moveSpeed)}</td>
+              </tr>
+            ))
+          }
+        </tbody>
+      </table>
+    </div>
+
+    <p data-filter-empty hidden class="mt-8 text-center text-paper-400">{t.common.noResults}</p>
+  </div>
+</BaseLayout>
+
+<script>
+  import '../../../scripts/filters.ts';
+</script>

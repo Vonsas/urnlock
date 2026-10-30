@@ -1,0 +1,229 @@
+---
+/**
+ * 패치노트 한 편 — 머리(날짜·제목·공식 원문) → 구역 바로가기 → 구역 패널 + 오른쪽 패치 목록.
+ * 문장은 번역 사전(src/data/patch-i18n)의 번역, 없으면 영어 원문. '원문 보기' 로 번역된 줄을 영어로 바꿔 본다 (data-show-orig).
+ * 영웅·아이템 구역은 대상별로 묶어 그림 + 현지화된 이름(상세로 링크) | 변경 줄 2열.
+ * 영웅 묶음은 기본 스탯 · 무기 줄을 위에, 능력 줄은 능력별로 아이콘 옆에 모은다 (2026-10-10 사용자 제안 — 어느 능력이 바뀌었는지 한눈에).
+ * 아이콘은 큰 칸(44px)으로 줄 묶음 위쪽에 고정 (가운데 맞춤은 줄이 많을 때 어색했다 — 사용자).
+ * 모든 문자열은 Astro 표현식으로 넣는다 (원문 HTML 은 데이터 계층에서 이미 평문으로 바뀜).
+ */
+import Panel from './Panel.astro';
+import HeroPortrait from './HeroPortrait.astro';
+import ItemIcon from './ItemIcon.astro';
+import PatchText from './PatchText.astro';
+import type { HeroSummary, Item, PatchLine, PatchNote } from '../data';
+import { localePath, useTranslations, type Locale } from '../i18n';
+import { fill, formatDate } from '../lib/format';
+import { gameImage } from '../lib/images';
+
+interface Props {
+  lang: Locale;
+  note: PatchNote;
+  notes: PatchNote[];
+  heroes: HeroSummary[];
+  items: Item[];
+}
+const { lang, note, notes, heroes, items } = Astro.props;
+const t = useTranslations(lang);
+const tp = t.patches;
+const heroBySlug = new Map(heroes.map((h) => [h.slug, h]));
+const itemBySlug = new Map(items.map((i) => [i.slug, i]));
+const isLatest = notes[0]?.id === note.id;
+const version = note.date.replaceAll('-', '.');
+const sectionTitle = (s: PatchNote['sections'][number]) => (s.key === 'other' ? (s.heading ?? '') : tp.sections[s.key]);
+const anchor = (i: number) => `section-${i + 1}`;
+const counts = (n: PatchNote) => (n.heroCount || n.itemCount ? fill(tp.counts, { h: n.heroCount, i: n.itemCount }) : tp.announcement);
+const oldest = notes.at(-1);
+const allLines = note.sections.flatMap((s) => s.blocks.flatMap((b): PatchLine[] => (b.type === 'group' ? b.lines : [b])));
+const translated = allLines.some((l) => l.orig);
+const groups = note.sections.flatMap((s) => s.blocks.filter((b) => b.type === 'group'));
+const abilityIcons = new Map(
+  await Promise.all(
+    groups.flatMap((g) => g.abilities ?? []).filter((a) => a.image).map(async (a) => [a.image!, await gameImage(a.image!, 72, 72)] as const),
+  ),
+);
+---
+
+<div data-patch class="mt-8 grid items-start gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
+  <div class="min-w-0">
+    <header>
+      <nav aria-label={t.nav.breadcrumb} class="text-xs text-paper-400">
+        <a href={localePath(lang, 'patches')} class="hover:text-paper-50">{t.nav.patches}</a>
+        <span class="mx-1.5" aria-hidden="true">/</span>
+        <span aria-current="page">{version}</span>
+      </nav>
+      <h1 class="mt-1 flex flex-wrap items-baseline gap-x-3 text-4xl font-extrabold tracking-tight tabular-nums">
+        {version}
+        {isLatest && <span class="chip align-middle text-xs font-semibold text-brass-200">{tp.latest}</span>}
+      </h1>
+      <p class="mt-1 text-paper-200">
+        {note.title}
+        <span class="text-paper-400"> · {formatDate(lang, note.date)}</span>
+      </p>
+      <div class="mt-4 flex flex-wrap items-center gap-2">
+        {
+          note.sections.length > 1 &&
+            note.sections.map((s, i) => (
+              <a href={`#${anchor(i)}`} class="chip hover:bg-ink-800 hover:text-paper-50">
+                {sectionTitle(s)}
+              </a>
+            ))
+        }
+        {
+          translated && (
+            <button type="button" data-orig-toggle aria-pressed="false" class="chip ml-auto hover:bg-ink-800 hover:text-paper-50 aria-pressed:bg-brass-400 aria-pressed:text-ink-950">
+              {tp.showOriginal}
+            </button>
+          )
+        }
+        {
+          // 외부에서 받은 주소는 https 만 링크로 (javascript: 같은 주소가 와도 링크가 되지 않게)
+          note.url?.startsWith('https://') && (
+            <a href={note.url} target="_blank" rel="noopener" class:list={['text-sm font-semibold text-brass-400 hover:text-brass-200', !translated && 'ml-auto']}>
+              {tp.official} ↗
+            </a>
+          )
+        }
+      </div>
+    </header>
+
+    <div class="mt-5 grid grid-cols-[minmax(0,1fr)] gap-4">
+      {
+        note.sections.map((s, i) => (
+          <Panel id={anchor(i)} title={sectionTitle(s)} class="scroll-mt-4" bodyClass="pb-2">
+            {/* 공지 속 긴 주소가 좁은 화면을 밀어내지 않게 (320px 에서 넘쳤다) */}
+            <div class="divide-y divide-line [overflow-wrap:anywhere]">
+              {s.blocks.map((b) =>
+                b.type === 'p' ? (
+                  <p class="max-w-3xl px-4 py-2.5 text-paper-200"><PatchText line={b} /></p>
+                ) : b.type === 'h' ? (
+                  <h3 class="px-4 pt-4 pb-1.5 text-xs font-bold tracking-wide text-brass-200"><PatchText line={b} /></h3>
+                ) : b.type === 'li' ? (
+                  <p class="flex gap-2.5 px-4 py-2 text-paper-200">
+                    <span aria-hidden="true" class="mt-[0.55em] size-1 flex-none bg-paper-500" />
+                    <span><PatchText line={b} /></span>
+                  </p>
+                ) : (
+                  <div class="grid gap-x-4 gap-y-1.5 px-4 py-3 sm:grid-cols-[11rem_minmax(0,1fr)]">
+                    <div class="flex items-center gap-2.5 self-start">
+                      {b.kind === 'hero' && b.slug && heroBySlug.get(b.slug) && (
+                        <HeroPortrait slug={b.slug} name={b.name} image={heroBySlug.get(b.slug)!.image} size="sm" class="size-8 flex-none" />
+                      )}
+                      {b.kind === 'item' && b.slug && itemBySlug.get(b.slug) && (
+                        <ItemIcon slug={b.slug} category={itemBySlug.get(b.slug)!.category} image={itemBySlug.get(b.slug)!.image} />
+                      )}
+                      {b.slug ? (
+                        <a
+                          href={b.kind === 'hero' ? localePath(lang, `heroes/${b.slug}`) : `${localePath(lang, 'items')}#${b.slug}`}
+                          class="min-w-0 font-semibold text-paper-50 hover:text-brass-200"
+                        >
+                          {b.name}
+                        </a>
+                      ) : (
+                        <span class="font-semibold text-paper-200">{b.name}</span>
+                      )}
+                    </div>
+                    <div class="grid gap-3.5 text-paper-200">
+                      {b.lines.some((l) => !l.ability) && (
+                        <ul class="grid gap-1">
+                          {b.lines.filter((l) => !l.ability).map((line) => (
+                            <li class="flex gap-2.5">
+                              <span aria-hidden="true" class="mt-[0.55em] size-1 flex-none bg-paper-500" />
+                              <span><PatchText line={line} /></span>
+                            </li>
+                          ))}
+                        </ul>
+                      )}
+                      {[...(b.abilities ?? [])].sort((x, y) => x.slot - y.slot).map((a) => (
+                        <div class="grid grid-cols-[2.75rem_minmax(0,1fr)] items-start gap-x-3">
+                          <span title={a.name} class="relative grid size-11 place-items-center rounded-sm bg-ink-800">
+                            {a.image && abilityIcons.get(a.image) ? (
+                              <img src={abilityIcons.get(a.image)} alt={a.name} width="28" height="28" class="size-7" loading="lazy" />
+                            ) : (
+                              <span class="text-xs font-bold text-paper-400">{a.slot}</span>
+                            )}
+                            <span
+                              aria-hidden="true"
+                              class:list={[
+                                'absolute -right-1 -bottom-1 grid size-4 place-items-center rounded-xs text-[0.625rem] leading-none font-bold',
+                                a.slot === 4 ? 'bg-copper-400 text-ink-950' : 'bg-ink-600 text-paper-50',
+                              ]}
+                            >
+                              {a.slot}
+                            </span>
+                          </span>
+                          <ul class="grid gap-1 pt-0.5">
+                            {b.lines.filter((l) => l.ability === a.slot).map((line) => (
+                              <li class="flex gap-2.5">
+                                <span aria-hidden="true" class="mt-[0.55em] size-1 flex-none bg-paper-500" />
+                                <span><PatchText line={line} /></span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ),
+              )}
+            </div>
+          </Panel>
+        ))
+      }
+    </div>
+  </div>
+
+  <aside class="lg:sticky lg:top-4">
+    <Panel title={tp.list} as="div" bodyClass="px-2 pb-2">
+      <ol>
+        {
+          notes.map((n, i) => {
+            const current = n.id === note.id;
+            return (
+              <li>
+                <a
+                  href={localePath(lang, i === 0 ? 'patches' : `patches/${n.id}`)}
+                  aria-current={current ? 'page' : undefined}
+                  class:list={[
+                    'grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-3 rounded-sm px-2 py-2 transition-colors duration-150',
+                    current ? 'bg-ink-800' : 'hover:bg-ink-850',
+                  ]}
+                >
+                  <span class:list={['font-semibold tabular-nums', current ? 'text-brass-200' : 'text-paper-50']}>{n.date.replaceAll('-', '.')}</span>
+                  <span class="min-w-0">
+                    <span class="block truncate text-paper-200">{n.title}</span>
+                    <span class="block text-xs text-paper-500">{counts(n)}</span>
+                  </span>
+                </a>
+              </li>
+            );
+          })
+        }
+      </ol>
+      {oldest && <p class="px-2 pt-2 text-xs text-paper-500">{fill(tp.since, { date: oldest.date.replaceAll('-', '.') })}</p>}
+    </Panel>
+  </aside>
+</div>
+
+<style is:global>
+  [data-patch] .patch-orig {
+    display: none;
+  }
+  [data-patch][data-show-orig] .patch-orig {
+    display: inline;
+  }
+  [data-patch][data-show-orig] .patch-tr {
+    display: none;
+  }
+</style>
+
+<script>
+  // 원문 보기 — 번역된 줄을 영어 원문으로 바꿔 본다
+  const root = document.querySelector<HTMLElement>('[data-patch]');
+  const toggle = root?.querySelector<HTMLButtonElement>('[data-orig-toggle]');
+  toggle?.addEventListener('click', () => {
+    const on = !root!.hasAttribute('data-show-orig');
+    root!.toggleAttribute('data-show-orig', on);
+    toggle.setAttribute('aria-pressed', String(on));
+  });
+</script>

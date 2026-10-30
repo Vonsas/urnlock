@@ -1,0 +1,22 @@
+# PR 검사 (2026-10-29) — 머지 전에 잡아야 하는, 빌드보다 가벼운 검사.
+# Vercel 함수 개수: 무료(Hobby) 요금제는 한 배포에 12개까지 — 넘으면 main · 미리보기 배포가 모두 실패한다 (#31 때 겪음, tools/check-functions.mjs).
+# 의존성 설치 없이 node 만으로 돌아 1분 안에 끝난다.
+name: pr-check
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  functions:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Vercel 함수 12개 이하
+        run: node tools/check-functions.mjs

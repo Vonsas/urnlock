@@ -1,0 +1,92 @@
+# 6시간마다 (2026-10-14, 예전 하루 한 번 — 새 영웅이 수·토 06시에 나와 하루 가까이 늦게 반영됐다) — ① 패치노트 보관(새 Steam 패치를 src/data/patch-archive.json 에 쌓음)
+# ② 티어 조각 보관(랭크 단계별 숙련자 수치를 하루 조각으로 src/data/tier-archive.json 에 쌓음 — 2026-10-29, docs/deploy-failures.md) ③ Vercel 재배포.
+# 빌드 때 deadlock-api 에서 승률·빌드·패치노트를 새로 받고, 티어 단계별 수치는 조각 파일을 더한다.
+# 보관 파일이 바뀌면 커밋·푸시하고(그 푸시로 Vercel 이 배포), 안 바뀌었으면 Deploy Hook 을 부른다 (두 번 배포하지 않게).
+# 배포 결과 확인 · 알림은 health-notify.yml 이 Vercel 의 결과 알림을 받아 한다 (예전엔 여기서 최대 20분 기다려 Actions 시간을 대부분 썼다).
+# VERCEL_DEPLOY_HOOK: Vercel 프로젝트 Settings → Git → Deploy Hooks 에서 만든 주소 (GitHub 저장소 Settings → Secrets → Actions 에 저장)
+name: daily-rebuild
+
+on:
+  schedule:
+    - cron: '37 4,10,16,22 * * *' # 01:37 · 07:37 · 13:37 · 19:37 KST — 정각은 GitHub 에 실행이 몰려 3–4시간씩 밀렸다 (정각을 피하라는 GitHub 안내)
+  workflow_dispatch: # Actions 탭에서 수동 실행
+    inputs:
+      usage_scale:
+        description: '사용량 점검 시험 — 한도에 곱할 수 (예 0.001 이면 이슈가 열린다). 비우면 실제 한도'
+        required: false
+        default: ''
+
+# 늦게 시작한 실행이 다음 실행과 겹치지 않게
+concurrency:
+  group: rebuild
+  cancel-in-progress: false
+
+permissions:
+  contents: write # 패치 보관 파일 커밋
+  issues: write # 점검 결과 알림
+
+jobs:
+  rebuild:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: 사이트 데이터가 오래됐는지 (30시간 넘게 그대로면 이슈 · 디스코드)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+        run: node tools/check-health.mjs --stale || echo "확인 건너뜀"
+
+      - name: 무료 한도 사용량 (70% · 90% · 넘음에 이슈 · 디스코드)
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+          UPSTASH_EMAIL: ${{ secrets.UPSTASH_EMAIL }}
+          UPSTASH_API_KEY: ${{ secrets.UPSTASH_API_KEY }}
+          SCALE: ${{ inputs.usage_scale }}
+        # 시크릿이 없는 서비스는 건너뛰고, 실패해도 재배포는 계속한다
+        run: node tools/check-usage.mjs ${SCALE:+--scale "$SCALE"} || echo "사용량 점검 건너뜀"
+
+      - name: 패치노트 보관
+        run: |
+          # 보관이 실패해도(API 응답 없음 등) 재배포는 계속한다
+          node tools/archive-patches.mjs || echo "패치 보관 건너뜀"
+
+      - name: 티어 조각 보관
+        run: |
+          # 못 받은 조각은 예전 값을 두고 다음 실행에서 다시 — 빌드는 빈 칸만 직접 받는다. 25분을 넘기면 멈춘다
+          npx --yes tsx@4.23.15 tools/archive-tiers.ts --budget 25 || echo "티어 조각 보관 건너뜀"
+
+      - name: 보관 파일이 바뀌었는지
+        id: archive
+        run: |
+          if git diff --quiet -- src/data/patch-archive.json src/data/tier-archive.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: 바뀐 보관 파일 커밋 (이 푸시로 Vercel 이 배포)
+        if: steps.archive.outputs.changed == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add src/data/patch-archive.json src/data/tier-archive.json
+          git commit -m "chore(data): archive patch notes and tier pieces"
+          # 그 사이 main 에 다른 푸시가 있었으면 그 위로 올린다
+          git pull --rebase
+          git push
+
+      - name: Vercel Deploy Hook 호출
+        if: steps.archive.outputs.changed != 'true'
+        env:
+          HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+        run: |
+          if [ -z "$HOOK" ]; then echo "VERCEL_DEPLOY_HOOK 시크릿이 없습니다"; exit 1; fi
+          curl -fsS -X POST "$HOOK"

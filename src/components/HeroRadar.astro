@@ -1,0 +1,78 @@
+---
+/**
+ * 플레이 성향 육각형 — 축마다 영웅들 사이 순위(0 최하 … 100 최고)를 반지름으로.
+ * 점선 육각형 = 영웅 평균(순위 50), 채운 도형 = 이 영웅. 서버에서 SVG 로 그린다 (스크립트 없음).
+ */
+interface Axis {
+  label: string;
+  /** 경기당 평균 (표시용 문자열) */
+  value: string;
+  /** 0–100 */
+  pct: number;
+  /** '5/38' 같은 순위 문구 */
+  rank: string;
+}
+interface Props {
+  axes: Axis[];
+  /** 그림 전체의 이름 (화면에는 안 보이고 읽기 도구용) */
+  title: string;
+  averageLabel: string;
+  class?: string;
+}
+const { axes, title, averageLabel, class: className } = Astro.props;
+
+const R = 78;
+const n = axes.length;
+const angle = (i: number) => -Math.PI / 2 + (i * 2 * Math.PI) / n;
+const point = (i: number, r: number) => [Math.cos(angle(i)) * r, Math.sin(angle(i)) * r] as const;
+const poly = (radius: (i: number) => number) =>
+  axes.map((_, i) => point(i, radius(i)).map((v) => v.toFixed(1)).join(',')).join(' ');
+// 순위 0 이어도 모양이 보이게 최소 반지름을 둔다
+const shape = poly((i) => R * (0.08 + 0.92 * (axes[i].pct / 100)));
+const rings = [0.25, 0.5, 0.75, 1];
+const labels = axes.map((a, i) => {
+  const [x, y] = point(i, R + 16);
+  const anchor = Math.abs(x) < 4 ? 'middle' : x > 0 ? 'start' : 'end';
+  // 위·아래 꼭짓점은 글자가 도형과 겹치지 않게 조금 더 띄운다
+  const dy = Math.abs(x) < 4 ? (y < 0 ? -10 : 8) : -2;
+  return { ...a, x, y: y + dy, anchor };
+});
+---
+
+<figure class:list={['m-0 flex flex-col', className]}>
+  <svg viewBox="-172 -122 344 250" class="min-h-0 w-full flex-1" role="img" aria-label={`${title}: ${axes.map((a) => `${a.label} ${a.value} (${a.rank})`).join(', ')}`}>
+    {
+      rings.map((f) => (
+        <polygon
+          points={poly(() => R * f)}
+          fill="none"
+          class:list={[f === 0.5 ? 'stroke-paper-400' : 'stroke-line-strong']}
+          stroke-width={f === 0.5 ? 1.2 : 1}
+          stroke-dasharray={f === 0.5 ? '3 3' : undefined}
+        />
+      ))
+    }
+    {axes.map((_, i) => <line x1="0" y1="0" x2={point(i, R)[0]} y2={point(i, R)[1]} class="stroke-line" stroke-width="1" />)}
+    <polygon points={shape} class="fill-brass-400/25 stroke-brass-400" stroke-width="2" stroke-linejoin="round" />
+    {
+      axes.map((a, i) => {
+        const [x, y] = point(i, R * (0.08 + 0.92 * (a.pct / 100)));
+        return <circle cx={x} cy={y} r="3" class="fill-brass-200" />;
+      })
+    }
+    {
+      labels.map((l) => (
+        <text x={l.x} y={l.y} text-anchor={l.anchor} class="fill-paper-200 text-[11px] font-semibold">
+          {l.label}
+          {/* 값 · 순위는 이름보다 또렷하게 (2026-10-25 사용자: 순위가 중요한데 회색에 묻혀 있었다) */}
+          <tspan x={l.x} dy="14" class="fill-paper-50 text-[11px] font-bold">{l.value}</tspan>
+          <tspan dx="5" class="fill-brass-200 text-[11px] font-bold">{l.rank}</tspan>
+        </text>
+      ))
+    }
+  </svg>
+  <figcaption class="mt-1 flex items-center justify-center gap-1.5 text-2xs text-paper-400">
+    <svg width="18" height="6" aria-hidden="true"><line x1="0" y1="3" x2="18" y2="3" class="stroke-paper-400" stroke-width="1.2" stroke-dasharray="3 3" /></svg>
+    {averageLabel}
+  </figcaption>
+</figure>

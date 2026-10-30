@@ -1,0 +1,43 @@
+---
+import { LOCALES, LOCALE_META, LANG_STORAGE_KEY, localePath, stripLocale, useTranslations, type Locale } from '../i18n';
+
+interface Props {
+  lang: Locale;
+}
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+const rest = stripLocale(Astro.url.pathname);
+---
+
+<nav aria-label={t.nav.language} class="seg">
+  {
+    LOCALES.map((code) => (
+      <a
+        href={localePath(code, rest)}
+        hreflang={LOCALE_META[code].htmlLang}
+        lang={LOCALE_META[code].htmlLang}
+        data-lang-choice={code}
+        aria-current={code === lang ? 'true' : undefined}
+        title={LOCALE_META[code].label}
+        class="h-6! px-2! text-xs! max-[359px]:px-1.5!"
+      >
+        {LOCALE_META[code].short}
+      </a>
+    ))
+  }
+</nav>
+
+<script is:inline define:vars={{ key: LANG_STORAGE_KEY }}>
+  // 사용자가 직접 고른 언어만 기억한다. `/` 로 들어오면 이 값으로 이동한다.
+  document.querySelectorAll('[data-lang-choice]').forEach((link) => {
+    link.addEventListener('click', () => {
+      // 주소의 ?id= · ?build= · #탭 을 그대로 들고 간다 (빼면 가이드 보기 · 플레이어 · 범위가 처음 화면으로 돌아갔다)
+      link.href = link.href.split(/[?#]/)[0] + location.search + location.hash;
+      try {
+        localStorage.setItem(key, link.getAttribute('data-lang-choice'));
+      } catch {
+        /* 저장소를 쓸 수 없는 환경(사생활 보호 모드 등)은 무시 */
+      }
+    });
+  });
+</script>

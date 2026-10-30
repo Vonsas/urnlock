@@ -1,0 +1,72 @@
+---
+/**
+ * 상단 — 한 색 띠. 넓은 화면(xl)은 Dotabuff 처럼 한 줄: 로고 · 메뉴 탭 … 플레이어 검색창 · 언어.
+ * 그보다 좁으면 메뉴 탭이 아래 줄로, 모바일은 로고·언어 / 검색 / 메뉴 탭 3줄.
+ * 순서는 order-* 로 바꾼다 (마크업 순서 = 읽기 순서: 로고 → 메뉴 → 검색 → 언어 → 계정).
+ */
+import AccountButton from './AccountButton.astro';
+import LanguageSwitcher from './LanguageSwitcher.astro';
+import SearchBox from './SearchBox.astro';
+import Wordmark from './Wordmark.astro';
+import { localePath, stripLocale, useTranslations, type Locale } from '../i18n';
+import { MENU_SECTIONS } from '../lib/sections';
+
+interface Props {
+  lang: Locale;
+  hideSearch?: boolean;
+}
+const { lang, hideSearch = false } = Astro.props;
+const t = useTranslations(lang);
+const current = stripLocale(Astro.url.pathname).split('/')[0];
+---
+
+<header class="border-b border-line bg-band">
+  <div class="mx-auto flex max-w-page flex-wrap items-center gap-x-6 px-4 max-[359px]:gap-x-3 sm:px-6">
+    <a href={localePath(lang)} class="order-1 flex h-14 items-center gap-2.5" aria-label={`${t.site.name} — ${t.site.subtitle}`}>
+      <Wordmark class="text-[1.625rem] text-paper-50" />
+    </a>
+
+    <nav
+      aria-label={t.nav.label}
+      class="order-6 -mx-4 w-[calc(100%+2rem)] overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:w-full sm:px-0 xl:order-2 xl:w-auto xl:self-stretch [&::-webkit-scrollbar]:hidden"
+    >
+      <ul class="flex h-full gap-6 whitespace-nowrap xl:gap-4 2xl:gap-6">
+        {
+          // 전적 페이지는 메뉴에서 '랭킹' 으로 (2026-10-16 사용자: 검색 없이 들어가면 나오는 공식 랭크 순위표로 가는 길이 없었다).
+          // 개별 전적은 그대로 오른쪽 위 검색창으로
+          MENU_SECTIONS.map((s) => {
+            const active = current === s.key;
+            return (
+              <li>
+                <a
+                  href={localePath(lang, s.key)}
+                  aria-current={active ? 'page' : undefined}
+                  class:list={[
+                    'flex h-11 items-center border-b-[3px] pt-[3px] text-[0.9375rem] transition-colors duration-150 xl:h-full',
+                    active
+                      ? 'border-brass-400 font-semibold text-paper-50'
+                      : s.ready
+                        ? 'border-transparent text-paper-400 hover:text-paper-50'
+                        : 'border-transparent text-paper-500 hover:text-paper-200',
+                  ]}
+                >
+                  {s.key === 'players' ? t.nav.ranking : t.nav[s.key]}
+                </a>
+              </li>
+            );
+          })
+        }
+      </ul>
+    </nav>
+
+    {/* sm+ 검색창은 남는 자리만큼만 (최대 18rem · xl 14rem · 2xl 20rem) — 고정 폭이면 영어 메뉴(2xl)나 좁은 sm 에서 계정 단추가 아랫줄로 밀렸다 (2026-10-29) */}
+    {!hideSearch && <SearchBox lang={lang} class="order-4 mb-1 w-full sm:order-3 sm:mb-0 sm:ml-auto sm:w-auto sm:min-w-32 sm:max-w-72 sm:flex-1 xl:max-w-56 2xl:max-w-80" />}
+    <div class:list={['order-3 ml-auto sm:order-4', !hideSearch && 'sm:ml-0']}>
+      <LanguageSwitcher lang={lang} />
+    </div>
+    {/* 계정 — 로그인 / 닉네임 메뉴 (2026-10-07). 언어 옆 */}
+    <div class="order-3 -ml-3 sm:order-5">
+      <AccountButton lang={lang} />
+    </div>
+  </div>
+</header>

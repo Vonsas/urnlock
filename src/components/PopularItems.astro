@@ -1,0 +1,92 @@
+---
+/**
+ * 공식 인기 아이템 — 게임 상점의 '인기 아이템' 탭과 같은 Valve 집계 (영웅 데이터의 popular_items).
+ *
+ * 데이터는 초반·중반·후반 구간마다 따로 와서 한 아이템이 여러 구간에 있을 수 있다 (클로즈 쿼터 초반 68% · 중반 6%).
+ * 게임 화면은 구간 탭 없이 **아이템마다 가장 많이 산 구간 하나만**, 그 구매율이 **10% 이상인 것만** 보여주고
+ * 툴팁에 '32%의 매치에서 후반에 구매' 라고 적는다 — 실버 화면과 데이터를 하나씩 대조해 확인한 규칙. 여기도 똑같이 한다.
+ * 배치: 가격 줄(800 · 1600 · 3200 · 6400) × 분류 열(무기 · 마법 · 생명). 승률도 오지만 늦게 사는 아이템일수록 부풀려져 싣지 않는다.
+ */
+import Panel from './Panel.astro';
+import ItemIcon from './ItemIcon.astro';
+import type { HeroPopularItems, Item } from '../data';
+import { ITEM_CATEGORIES, ITEM_TIERS, tierCost } from '../data';
+import { localePath, useTranslations, type Locale } from '../i18n';
+import { fill, formatDate, formatNumber } from '../lib/format';
+
+interface Props {
+  lang: Locale;
+  popular: HeroPopularItems;
+  items: Item[];
+}
+const { lang, popular, items } = Astro.props;
+const t = useTranslations(lang);
+const itemById = new Map(items.filter((i) => i.id !== undefined).map((i) => [i.id!, i]));
+/** 게임 화면에 나오는 최소 구매율 (%) */
+const MIN_PICK = 10;
+const tone = { weapon: 'bg-weapon/8', spirit: 'bg-spirit/8', vitality: 'bg-vitality/8' };
+const heading = { weapon: 'text-weapon', spirit: 'text-spirit', vitality: 'text-vitality' };
+
+// 아이템마다 가장 많이 산 구간 하나
+const best = new Map<number, { phase: 'early' | 'mid' | 'late'; pick: number }>();
+for (const phase of ['early', 'mid', 'late'] as const) {
+  for (const p of popular[phase]) {
+    const b = best.get(p.itemId);
+    if (!b || p.pickRate > b.pick) best.set(p.itemId, { phase, pick: p.pickRate });
+  }
+}
+const picks = [...best]
+  .map(([id, b]) => ({ ...b, item: itemById.get(id) }))
+  .filter((p): p is typeof p & { item: Item } => Boolean(p.item) && p.pick >= MIN_PICK)
+  .sort((a, b) => b.pick - a.pick);
+const rows = ITEM_TIERS.map((tier) => ({
+  tier,
+  cells: ITEM_CATEGORIES.map((cat) => ({ cat, picks: picks.filter((p) => p.item.tier === tier && p.item.category === cat) })),
+})).filter((r) => r.cells.some((c) => c.picks.length));
+const date = formatDate(lang, new Date(popular.updatedAt * 1000).toISOString().slice(0, 10));
+---
+
+{
+  rows.length > 0 && (
+    <Panel title={t.heroes.popularTitle} bodyClass="px-4 pb-4">
+      <div class="hidden grid-cols-[4.5rem_repeat(3,minmax(0,1fr))] gap-x-2 pb-1.5 text-xs font-bold md:grid">
+        <span />
+        {ITEM_CATEGORIES.map((c) => (
+          <span class:list={['px-2', heading[c]]}>{t.items.categories[c]}</span>
+        ))}
+      </div>
+      <div class="grid gap-2">
+        {rows.map((row) => (
+          <div class="grid gap-2 md:grid-cols-[4.5rem_repeat(3,minmax(0,1fr))]">
+            <span class="self-center text-sm font-bold text-paper-200 tabular-nums">{formatNumber(lang, tierCost(row.tier))}</span>
+            {row.cells.map((cell) => (
+              <div class:list={['flex min-h-12 flex-wrap content-start gap-1.5 rounded-sm p-1.5', tone[cell.cat], !cell.picks.length && 'hidden md:flex']}>
+                {cell.picks.map((pick) => {
+                  const phase = t.heroes.popularPhase[pick.phase];
+                  const pct = Math.round(pick.pick);
+                  return (
+                    <a
+                      href={`${localePath(lang, 'items')}#${pick.item.slug}`}
+                      title={`${pick.item.name} — ${fill(t.heroes.popularBought, { n: pct, phase })}`}
+                      class="group flex w-[4.5rem] flex-col items-center gap-1 rounded-sm p-1 text-center transition-colors duration-150 hover:bg-ink-800"
+                    >
+                      <span class="relative">
+                        <ItemIcon slug={pick.item.slug} category={pick.item.category} image={pick.item.image} class="size-12" />
+                        <span class="absolute -right-1.5 -bottom-1 rounded-xs bg-ink-950 px-1 text-[0.6875rem] font-bold text-paper-50 tabular-nums">
+                          {pct}%
+                        </span>
+                      </span>
+                      <span class="line-clamp-2 text-[0.6875rem] leading-tight text-paper-200 group-hover:text-paper-50">{pick.item.name}</span>
+                      <span class="text-[0.625rem] leading-none text-paper-500">{phase}</span>
+                    </a>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        ))}
+      </div>
+      <p class="mt-3 text-xs text-paper-500">{fill(t.heroes.popularNote, { date, min: MIN_PICK })}</p>
+    </Panel>
+  )
+}

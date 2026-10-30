@@ -1,0 +1,115 @@
+---
+/**
+ * 게임 빌드 한 개 — 머리(제목 · 빌드 이름 · 빌드 ID 복사 · 수정일 · 이전 패치 표시 · 출처) → 작성자가 나눈 아이템 묶음 → 스킬 순서.
+ * 묶음은 한 줄에 하나씩 [묶음 이름 | 아이템] (2026-10-03 '빌드 탭 깔끔하게': 3열 격자는 칸마다 아이템 수가 달라 빈 공간이 많았다).
+ * 프로 빌드와 최상위권 인기 빌드가 같이 쓴다. 빌드 이름·묶음 이름·메모는 외부 글이라 글자로만 넣는다.
+ */
+import ItemIcon from './ItemIcon.astro';
+import BuildStats from './BuildStats.astro';
+import SkillOrder from './SkillOrder.astro';
+import type { Ability, AuthorStanding, BuildPerf, GameBuild, Item, Rank } from '../data';
+import { localePath, useTranslations, type Locale } from '../i18n';
+import { fill, formatDate } from '../lib/format';
+import { groupName, skillOrderFits } from '../lib/build-groups';
+
+interface Props {
+  lang: Locale;
+  items: Item[];
+  abilities: Ability[];
+  /** 프로 이름 또는 '최상위권 1위' */
+  title: string;
+  /** 제목 옆 보조 문구 ('42명 · 58판' 등) */
+  meta?: string;
+  buildId: number;
+  build: GameBuild | null;
+  note?: string;
+  source?: string;
+  /** 현재 패치 시작 (unix 초) — 그보다 먼저 수정된 빌드에 '이전 패치' 표시 */
+  patchFrom?: number;
+  /** 빌드 성적 · 작성자 랭킹 (BuildStats) */
+  perf?: BuildPerf;
+  author?: AuthorStanding;
+  ranks: Rank[];
+}
+const { lang, items, abilities, title, meta, buildId, build, note, source, patchFrom, perf, author, ranks } = Astro.props;
+const t = useTranslations(lang);
+const itemById = new Map(items.filter((i) => i.id !== undefined).map((i) => [i.id!, i]));
+const day = (unix: number) => formatDate(lang, new Date(unix * 1000).toISOString().slice(0, 10));
+const groups = (build?.groups ?? [])
+  .map((g) => ({ name: groupName(g.name, t), items: g.items.filter((it) => itemById.has(it.itemId)) }))
+  .filter((g) => g.items.length);
+const oldPatch = build && patchFrom ? build.updatedAt < patchFrom : false;
+---
+
+<article class="grid grid-cols-[minmax(0,1fr)] gap-4">
+  <header>
+    <div class="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+      <h3 class="text-xl font-bold tracking-tight text-paper-50">{title}</h3>
+      {meta && <span class="text-xs font-semibold text-copper-400">{meta}</span>}
+      <button
+        type="button"
+        data-copy-build={buildId}
+        data-copied={t.heroes.proCopied}
+        class="chip ml-auto gap-1.5 tabular-nums hover:bg-ink-800 hover:text-paper-50"
+        title={t.heroes.proCopy}
+      >
+        <svg data-icon="copy" aria-hidden="true" viewBox="0 0 16 16" class="size-3.5 flex-none" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linejoin="round"><rect x="5.5" y="5.5" width="8" height="8" rx="1.5"></rect><path d="M10.5 5.5V3.5A1.5 1.5 0 0 0 9 2H3.5A1.5 1.5 0 0 0 2 3.5V9a1.5 1.5 0 0 0 1.5 1.5h2"></path></svg>
+        <svg data-icon="check" aria-hidden="true" viewBox="0 0 16 16" class="hidden size-3.5 flex-none" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m3 8.5 3.2 3L13 4.5"></path></svg>
+        <span data-copy-label>{fill(t.heroes.proBuildId, { id: buildId })}</span>
+      </button>
+    </div>
+    {build && <p class="mt-1 truncate text-paper-200">{build.name}</p>}
+    <p class="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-paper-500">
+      {note && <span class="text-paper-400">{note}</span>}
+      {build && <span>{fill(t.heroes.proUpdated, { date: day(build.updatedAt) })}</span>}
+      {oldPatch && <span class="chip text-copper-400">{t.heroes.buildOldPatch}</span>}
+      {
+        source && (
+          <a href={source} target="_blank" rel="noopener nofollow" class="text-brass-400 hover:text-brass-200">
+            {t.heroes.proSource} ↗
+          </a>
+        )
+      }
+    </p>
+    <BuildStats lang={lang} perf={perf} author={author} ranks={ranks} />
+  </header>
+
+  {
+    groups.length > 0 ? (
+      <div class="divide-y divide-line rounded-md bg-ink-850">
+        {groups.map((g) => (
+          <section class="grid gap-x-4 gap-y-1.5 px-3 py-2 sm:grid-cols-[9rem_minmax(0,1fr)] sm:items-center">
+            {/* 작성자가 이름을 안 붙인 묶음은 이름 칸을 비워 둔다 (넓은 화면에서 열은 유지) */}
+            <h4 class:list={['truncate text-xs font-semibold text-paper-400', !g.name && 'max-sm:hidden']} title={g.name || undefined}>
+              {g.name}
+            </h4>
+            <ul class="flex flex-wrap gap-1.5">
+              {g.items.map((it) => {
+                const item = itemById.get(it.itemId)!;
+                return (
+                  <li>
+                    <a href={`${localePath(lang, 'items')}#${item.slug}`} title={it.note ? `${item.name} — ${it.note}` : item.name}>
+                      <ItemIcon slug={item.slug} category={item.category} image={item.image} class="size-9" />
+                      <span class="sr-only">{item.name}</span>
+                    </a>
+                  </li>
+                );
+              })}
+            </ul>
+          </section>
+        ))}
+      </div>
+    ) : (
+      <p class="text-sm text-paper-400">{t.heroes.buildMissing}</p>
+    )
+  }
+
+  {
+    build && skillOrderFits(build.abilityOrder, abilities.map((a) => a.id)) && (
+      <section>
+        <h4 class="pb-1.5 text-xs font-semibold text-paper-400">{t.heroes.skillOrderTitle}</h4>
+        <SkillOrder lang={lang} abilities={abilities} order={build.abilityOrder} />
+      </section>
+    )
+  }
+</article>

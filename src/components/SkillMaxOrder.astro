@@ -1,0 +1,82 @@
+---
+/**
+ * 스킬 선마 — 강화 포인트 20까지(둘 마스터 + 셋째 방향) 포인트를 많이 넣은 능력 순서로 묶은 상위 3개와 비율 · 승률 (2026-10-08, 승률 · 포인트 기준은 2026-10-09).
+ * 줄마다 그 선마 안에서 가장 많이 쓴 찍는 순서를 SkillTrack 으로 (능력마다 한 줄, 해금 = 보라 마름모 · 강화 = 드는 포인트 — 2026-10-14 게임 빌드 화면처럼).
+ * 계산은 data/api/insights.ts maxOrders — 마스터한 순서로 세면 긴 판만 남아 승률이 부풀었다.
+ * 빌드 탭 맨 위, 보기(공식·프로·상위권·통계)와 상관없이 늘 보인다. 기준은 티어와 같은 전령사+ 랭크 · 최근 14일.
+ * 능력 id 가 하나라도 이 영웅 능력과 맞지 않는 순서는 뺀다.
+ */
+import Panel from './Panel.astro';
+import SkillTrack from './SkillTrack.astro';
+import type { Ability, HeroInsights } from '../data';
+import { useTranslations, type Locale } from '../i18n';
+import { fill, formatNumber, formatPercent } from '../lib/format';
+
+interface Props {
+  lang: Locale;
+  abilities: Ability[];
+  insights: HeroInsights;
+}
+const { lang, abilities, insights } = Astro.props;
+const t = useTranslations(lang);
+/** 첫 번째 순서는 늘, 2·3번째는 이 비율(%) 이상일 때만 (판수 1,000 이상은 insights.ts 에서) */
+const MIN_SHARE = 5;
+
+const byId = new Map(abilities.map((a) => [a.id, a]));
+const rows = insights.maxOrders
+  .filter((o) => o.path.length > 0 && o.path.every((id) => byId.has(id)))
+  .filter((o, i) => i === 0 || o.share >= MIN_SHARE)
+  .map((o) => ({ ...o, full: completePath(o.path, o.order) }));
+
+/**
+ * 20포인트까지의 실제 순서 뒤를 선마 순서대로 채워 끝까지 (2026-10-17 사용자: 판수를 확보하려고 20포인트에서 자른 것이고 뒤는 예상되니 끝까지 보여 줘야).
+ * 선마 1 → 2 → 3 → 나머지 능력 순으로, 능력마다 해금 + 강화 3 까지. 채운 부분은 화면에서 흐리게 (SkillTrack predictedFrom)
+ */
+function completePath(path: number[], order: number[]): number[] {
+  const count = new Map<number, number>();
+  for (const id of path) count.set(id, (count.get(id) ?? 0) + 1);
+  const rest = [...order, ...abilities.map((a) => a.id!).filter((id) => id !== undefined && !order.includes(id))];
+  const out = [...path];
+  for (const id of rest) for (let n = count.get(id) ?? 0; n < 4; n++) out.push(id);
+  return out;
+}
+---
+
+{
+  rows.length > 0 && (
+    <Panel title={t.heroes.maxOrderTitle} bodyClass="px-4 pb-4">
+      <ol class="grid gap-1.5">
+        {rows.map((row, r) => (
+          <li class:list={['flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md p-2', r === 0 ? 'bg-ink-800' : 'bg-ink-850']}>
+            <div class="w-full min-w-0 sm:w-auto sm:flex-1">
+              <SkillTrack lang={lang} abilities={abilities} order={row.full} predictedFrom={row.path.length} />
+            </div>
+            <span class="ml-auto flex items-center gap-4">
+              <span class="flex flex-none flex-col items-end gap-1">
+                <span class:list={['text-sm font-bold tabular-nums', r === 0 ? 'text-paper-50' : 'text-paper-300']}>{formatPercent(lang, row.share)}</span>
+                <span class="h-1 w-14 overflow-hidden rounded-full bg-ink-700" aria-hidden="true">
+                  <span class="block h-full rounded-full bg-brass-400" style={`width:${Math.min(100, row.share).toFixed(1)}%`} />
+                </span>
+              </span>
+              <span class="flex w-14 flex-none flex-col items-end gap-0.5" title={fill(t.heroes.matchCount, { n: formatNumber(lang, row.matches) })}>
+                <span class="text-2xs text-paper-400">{t.heroes.chartWinRate}</span>
+                <span class:list={['text-sm font-bold tabular-nums', r === 0 ? 'text-paper-50' : 'text-paper-300']}>{formatPercent(lang, row.winRate)}</span>
+              </span>
+            </span>
+          </li>
+        ))}
+      </ol>
+      <p class="mt-3 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-paper-500">
+        <span class="flex items-center gap-1.5">
+          <span class="st-mark st-unlock" aria-hidden="true" />
+          {t.heroes.unlock}
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="st-mark" aria-hidden="true">1</span>
+          {t.heroes.upgradePoints}
+        </span>
+        <span>{fill(t.heroes.maxOrderNote, { n: formatNumber(lang, insights.abilityOrderMatches) })} · {t.heroes.basisUpperShort}</span>
+      </p>
+    </Panel>
+  )
+}

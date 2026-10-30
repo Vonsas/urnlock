@@ -1,0 +1,107 @@
+---
+/**
+ * 승률 추이 — 위: 일별 승률 선(50% 점선 기준), 아래: 일별 판수 막대. 패치 날짜엔 세로 점선.
+ * 선은 늘어나는 SVG(preserveAspectRatio none + non-scaling-stroke), 축 글씨·점·마우스 영역은 HTML 로 겹쳐
+ * 화면 폭이 달라도 글씨 크기가 그대로다. 하루 칸에 마우스를 올리면 그날 승률·판수 (scripts/tooltip.ts).
+ */
+import { useTranslations, type Locale } from '../i18n';
+import { fill, formatNumber, formatPercent } from '../lib/format';
+
+interface Props {
+  lang: Locale;
+  points: Array<{ day: number; winRate: number; matches: number }>;
+  /** 패치 게시일 (unix 초) */
+  patches: Array<{ day: number; label: string }>;
+}
+const { lang, points, patches } = Astro.props;
+const t = useTranslations(lang);
+const n = points.length;
+// 날짜는 짧게 '9/28' (언어와 상관없이 같은 꼴)
+const md = { format: (d: Date) => `${d.getUTCMonth() + 1}/${d.getUTCDate()}` };
+
+// 세로축: 승률 범위를 2%p 단위로, 50% 를 꼭 포함
+const lo = Math.floor((Math.min(50, ...points.map((p) => p.winRate)) - 0.5) / 2) * 2;
+const hi = Math.ceil((Math.max(50, ...points.map((p) => p.winRate)) + 0.5) / 2) * 2;
+const step = hi - lo > 10 ? 4 : 2;
+const ticks: number[] = [];
+for (let v = lo; v <= hi; v += step) ticks.push(v);
+const yPct = (v: number) => ((hi - v) / (hi - lo)) * 100;
+// 하루 = 한 칸, 점·막대·마우스 영역 모두 칸 가운데에 맞춘다
+const xPct = (i: number) => ((i + 0.5) / n) * 100;
+const line = points.map((p, i) => `${i ? 'L' : 'M'}${xPct(i) * 10},${yPct(p.winRate)}`).join(' ');
+const maxMatches = Math.max(...points.map((p) => p.matches), 1);
+const last = points[n - 1];
+
+// 가로축 날짜 — 끝에서부터 7일마다, 맨 앞은 다음 눈금과 4일 이상 떨어질 때만 (겹침 방지)
+const xLabels = points.flatMap((p, i) => ((n - 1 - i) % 7 === 0 || (i === 0 && (n - 1) % 7 >= 4) ? [{ i, text: md.format(new Date(p.day * 1000)) }] : []));
+// 패치선 — 그날 칸의 위치 (기간 밖은 뺀다)
+const first = points[0]?.day ?? 0;
+const patchLines = patches
+  .map((p) => ({ ...p, i: Math.floor((p.day - first) / 86_400) }))
+  .filter((p) => p.i >= 0 && p.i <= n - 1);
+const tipFor = (p: (typeof points)[number]) =>
+  `${md.format(new Date(p.day * 1000))}\n${t.heroes.chartWinRate} ${formatPercent(lang, p.winRate)} · ${fill(t.heroes.matchCount, { n: formatNumber(lang, p.matches) })}`;
+---
+
+{
+  n > 2 && (
+    <figure class="m-0 select-none">
+      <div class="relative ml-10">
+        <div class="relative h-44">
+          {/* 가로 눈금 + 세로축 글씨 */}
+          {ticks.map((v) => (
+            <div class="absolute inset-x-0 border-t border-line" style={`top:${yPct(v)}%`}>
+              <span class="absolute -left-10 w-8 -translate-y-1/2 text-right text-2xs text-paper-500 tabular-nums">{v}%</span>
+            </div>
+          ))}
+          <div class="absolute inset-x-0 border-t border-dashed border-paper-500" style={`top:${yPct(50)}%`} />
+          {patchLines.map((p) => (
+            <div class="absolute inset-y-0 border-l border-dashed border-copper-400/70" style={`left:${xPct(p.i)}%`}>
+              {/* 오른쪽 끝 가까운 패치는 글씨를 선 왼쪽에 (끝 값 글씨·화면 끝과 겹치지 않게) */}
+              <span class:list={['absolute -top-0.5 text-2xs whitespace-nowrap text-copper-400', xPct(p.i) > 80 ? 'right-1' : 'left-1']}>{p.label}</span>
+            </div>
+          ))}
+          <svg viewBox="0 0 1000 100" preserveAspectRatio="none" class="absolute inset-0 size-full overflow-visible" aria-hidden="true">
+            <path d={line} fill="none" class="stroke-brass-400" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke" />
+          </svg>
+          {last && (
+            <span
+              class="absolute size-2.5 -translate-x-1/2 -translate-y-1/2 rounded-full bg-brass-400 ring-2 ring-ink-900"
+              style={`left:${xPct(n - 1)}%;top:${yPct(last.winRate)}%`}
+            />
+          )}
+          {last && (
+            <span class="absolute right-0 -translate-y-[130%] text-xs font-bold text-brass-200 tabular-nums" style={`top:${yPct(last.winRate)}%`}>
+              {formatPercent(lang, last.winRate)}
+            </span>
+          )}
+        </div>
+
+        {/* 일별 판수 막대 */}
+        <div class="relative mt-3 flex h-12 items-end gap-px">
+          <span class="absolute top-0 -left-10 w-8 text-right text-2xs text-paper-500">{t.heroes.chartMatches}</span>
+          {points.map((p) => (
+            <span class="flex-1 rounded-t-xs bg-paper-500/35" style={`height:${Math.max(4, (p.matches / maxMatches) * 100)}%`} />
+          ))}
+        </div>
+
+        {/* 마우스 영역 — 하루 한 칸, 선 그래프와 막대를 함께 덮는다 */}
+        <div class="absolute inset-0 flex">
+          {points.map((p) => (
+            <span data-tip={tipFor(p)} class="flex-1 transition-colors duration-150 hover:bg-paper-50/6" />
+          ))}
+        </div>
+      </div>
+
+      {/* 날짜 */}
+      <div class="relative mt-1.5 ml-10 h-4">
+        {xLabels.map((l) => (
+          <span class="absolute -translate-x-1/2 text-2xs whitespace-nowrap text-paper-500 tabular-nums" style={`left:${xPct(l.i)}%`}>
+            {l.text}
+          </span>
+        ))}
+      </div>
+    </figure>
+  )
+}
+

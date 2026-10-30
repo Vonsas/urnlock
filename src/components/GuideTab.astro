@@ -1,0 +1,65 @@
+---
+/**
+ * 영웅 상세 '가이드' 탭 (2026-10-06) — 위: 이 영웅 가이드(추천순 몇 개 + 전체 보기 · 쓰기), 아래: 한 줄 팁.
+ * 둘 다 스팀으로 인증한 사람만 쓰고, 욕설·링크 검사를 통과하면 바로 보인다.
+ * 팁 옆에는 쓴 사람의 랭크 휘장 · 스팀 닉네임 · '기록상 n판'(이 영웅, 전적 데이터가 다 잡히지 않아 최소치)을 붙인다.
+ * 페이지에는 빈 틀만 있고, 탭을 처음 열 때 브라우저가 /api/tips 를 부른다 (안 보는 사람에겐 아무것도 더 받지 않는다).
+ * 그리기·쓰기는 scripts/guide.ts, 서버는 src/pages/api/ (tips · auth · admin).
+ */
+import Panel from './Panel.astro';
+import type { Rank } from '../data';
+import { gameImage } from '../lib/images';
+import { LOCALE_META, localePath, useTranslations, type Locale } from '../i18n';
+import { TIP_MAX_LENGTH } from '../lib/tips';
+import type { GuideConfig } from '../scripts/guide';
+
+interface Props {
+  lang: Locale;
+  heroId: number;
+  heroName: string;
+  heroSlug: string;
+  ranks: Rank[];
+}
+const { lang, heroId, heroName, heroSlug, ranks } = Astro.props;
+const t = useTranslations(lang);
+const config: GuideConfig = {
+  heroId,
+  locale: LOCALE_META[lang].htmlLang,
+  maxLength: TIP_MAX_LENGTH,
+  playerPath: `/${lang}/players/`,
+  ranks: Object.fromEntries(await Promise.all(ranks.map(async (r) => [r.tier, { name: r.name, icon: await gameImage(r.image, 48, 48) }] as const))),
+  t: t.guide,
+  guides: {
+    heroName,
+    list: `${localePath(lang, 'guides')}?hero=${heroSlug}`,
+    view: localePath(lang, 'guides/view'),
+    write: `${localePath(lang, 'guides/write')}?hero=${heroSlug}`,
+    t: t.guides,
+  },
+};
+const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
+---
+
+<div data-guide class="grid grid-cols-[minmax(0,1fr)] gap-4">
+  <Panel title={t.guides.heroSection.replace('{hero}', heroName)}>
+    <a slot="meta" href={config.guides.list} class="ml-auto text-xs font-semibold text-paper-400 hover:text-paper-50">{t.guides.viewAll}</a>
+    <ul data-guide-guides class="divide-y divide-line" aria-live="polite">
+      <li class="px-4 py-6 text-sm text-paper-500">{t.guides.loading}</li>
+    </ul>
+    <div class="border-t border-line px-4 py-4">
+      <a href={config.guides.write} class="inline-flex items-center gap-2 rounded-md bg-ink-850 px-4 py-2 text-sm font-bold text-paper-100 ring-1 ring-line transition-colors duration-150 ring-inset hover:bg-ink-800">{t.guides.writeForHero}</a>
+    </div>
+  </Panel>
+  <Panel title={t.guide.tipsTitle}>
+    <span slot="meta" data-guide-count class="ml-auto text-xs text-paper-500 tabular-nums"></span>
+    <ul data-guide-list class="divide-y divide-line" aria-live="polite">
+      <li class="px-4 py-6 text-sm text-paper-500">{t.guide.loading}</li>
+    </ul>
+    <div data-guide-write class="border-t border-line px-4 py-4"></div>
+  </Panel>
+  <script type="application/json" data-guide-config set:html={configJson} />
+</div>
+
+<script>
+  import '../scripts/guide.ts';
+</script>

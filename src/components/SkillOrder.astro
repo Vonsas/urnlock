@@ -1,0 +1,46 @@
+---
+/**
+ * 스킬 순서 — 능력마다 한 줄, 찍은 단계 자리에 표시 (게임 빌드 화면처럼, 2026-10-14). 처음 = 해금(보라 마름모), 이후 = 강화(그 강화에 드는 포인트 1 · 2 · 5).
+ * 모양은 global.css .skill-track (빌드 페이지 창 scripts/builds.ts 도 같은 이름을 쓴다).
+ * 상위권 통계(갈림길마다 다수 선택)와 게임 빌드(작성자가 정한 순서)가 같이 쓴다.
+ * 능력 id 가 하나라도 이 영웅 능력과 맞지 않으면 그리지 않는다.
+ */
+import type { Ability } from '../data';
+import { useTranslations, type Locale } from '../i18n';
+import SkillTrack from './SkillTrack.astro';
+import { skillOrder, skillOrderFits } from '../lib/build-groups';
+
+interface Props {
+  lang: Locale;
+  abilities: Ability[];
+  /** 능력 id, 포인트를 쓴 순서 */
+  order: number[];
+  /** 표 아래 설명 (선택) */
+  note?: string;
+}
+const { lang, abilities, order: raw, note } = Astro.props;
+// 능력마다 해금 1번 + 강화 3번까지만
+const order = skillOrder(raw);
+const t = useTranslations(lang);
+const bySlot = [...abilities].sort((a, b) => a.slot - b.slot);
+const ok = skillOrderFits(raw, bySlot.map((a) => a.id));
+---
+
+{
+  ok && (
+    <div>
+      <SkillTrack lang={lang} abilities={abilities} order={order} />
+      <p class="mt-2 flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-paper-500">
+        <span class="flex items-center gap-1.5">
+          <span class="st-mark st-unlock" aria-hidden="true" />
+          {t.heroes.unlock}
+        </span>
+        <span class="flex items-center gap-1.5">
+          <span class="st-mark" aria-hidden="true">1</span>
+          {t.heroes.upgradePoints}
+        </span>
+        {note && <span>{note}</span>}
+      </p>
+    </div>
+  )
+}

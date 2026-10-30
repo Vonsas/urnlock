@@ -1,0 +1,73 @@
+# Cloudflare Pages 예비 배포 (#33, 2026-10-30) — Vercel 이 무료 한도로 멈췄을 때 www 를 돌릴 곳.
+# 하루 한 번 전체 빌드를 Actions 에서 해 Pages 에 직접 올린다(wrangler). 평소엔 아무도 이 주소로 오지 않는다 — www 는 Vercel.
+# 전환 · 복귀 절차는 docs/plan-pages-standby.md. **www 를 돌리기 직전에 수동 실행으로 최신 데이터로 맞춘다** (하루 한 번이라 최대 24시간 묵음).
+#
+# 빌드 조건: VERCEL_ENV 가 비어 있어 assetsPrefix 가 꺼지고(자기 /_astro 를 씀 — static.urnlock.com 은 Vercel 이라 같이 죽는다),
+#   SITE_URL 로 canonical · hreflang · sitemap 이 www 를 가리킨다(pages.dev 가 검색에 따로 잡히지 않게),
+#   HEALTH_STRICT 로 Vercel 빌드처럼 점검 문제가 있으면 멈춘다(직전 Pages 배포 유지). 헤더 · 리디렉트는 vercel.json 에서 만든다.
+# 시크릿 (사용자): CLOUDFLARE_API_TOKEN (Account → Cloudflare Pages: Edit) · CLOUDFLARE_ACCOUNT_ID. 없으면 아무것도 하지 않는다 (Actions 시간 절약).
+# 프로젝트 이름: 저장소 변수 PAGES_PROJECT (없으면 urnlock). 없으면 처음 올릴 때 만든다.
+# Actions 시간: 한 번 약 10분 → 월 약 300분 (비공개 저장소 무료 월 2,000분, daily-rebuild 와 합쳐 확인).
+name: pages-standby
+
+on:
+  schedule:
+    - cron: '17 19 * * *' # 04:17 KST — daily-rebuild(01:37 · 07:37 · 13:37 · 19:37) 과 겹치지 않게
+  workflow_dispatch: # www 를 돌리기 직전 · 시험
+
+concurrency:
+  group: pages-standby
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+jobs:
+  standby:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    env:
+      HAS_CF: ${{ secrets.CLOUDFLARE_API_TOKEN != '' && secrets.CLOUDFLARE_ACCOUNT_ID != '' }}
+      PROJECT: ${{ vars.PAGES_PROJECT || 'urnlock' }}
+    steps:
+      - name: 시크릿 없음 — 건너뜀
+        if: env.HAS_CF != 'true'
+        run: echo "CLOUDFLARE_API_TOKEN · CLOUDFLARE_ACCOUNT_ID 시크릿이 없어 빌드하지 않습니다"
+
+      - uses: actions/checkout@v4
+        if: env.HAS_CF == 'true'
+
+      - uses: actions/setup-node@v4
+        if: env.HAS_CF == 'true'
+        with:
+          node-version: 22
+
+      - name: 설치
+        if: env.HAS_CF == 'true'
+        run: npx --yes pnpm@12.6.0 install --frozen-lockfile
+
+      - name: 빌드 (assetsPrefix 끔 · canonical 은 www · 점검 문제면 멈춤)
+        if: env.HAS_CF == 'true'
+        env:
+          SITE_URL: https://www.urnlock.com
+          HEALTH_STRICT: '1'
+          # 가이드 · 팁 스냅샷(#21): 저장소(KV)가 없는 이 빌드는 직전 사본을 이어 쓴다 — www 가 죽어도(Vercel 정지) 자기 pages.dev 사본에서
+          SNAPSHOT_FALLBACK_URL: https://${{ env.PROJECT }}.pages.dev
+          # 비상 스위치 — 저장소 변수 SNAPSHOT_REUSE=0 이면 직전 사본을 이어 쓰지 않고 빈 스냅샷 (운영자가 내린 글이 옛 사본에 남았을 때)
+          SNAPSHOT_REUSE: ${{ vars.SNAPSHOT_REUSE }}
+        run: npx --yes pnpm@12.6.0 run build
+
+      - name: Pages 마무리 (_headers · _redirects · 한도 · static 주소 · health 검사)
+        if: env.HAS_CF == 'true'
+        run: node tools/build-pages-config.mjs dist
+
+      # wrangler-action 은 저장소의 pnpm-lock.yaml 을 보고 pnpm 으로 wrangler 를 깔려다 러너에 pnpm 이 없어 멈춘다 → npx 로 직접 (1차 리뷰)
+      - name: Pages 에 올리기
+        if: env.HAS_CF == 'true'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          # 프로젝트가 없으면 만든다 (있으면 오류가 나지만 넘어감)
+          npx --yes wrangler@4.20.0 pages project create "$PROJECT" --production-branch=main || true
+          npx --yes wrangler@4.20.0 pages deploy dist --project-name="$PROJECT" --branch=main --commit-dirty=true

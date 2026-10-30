@@ -1,0 +1,54 @@
+---
+/** 빌드 / 가이드 / 패치노트 — 아직 준비 중인 페이지 */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import PageHead from '../../components/PageHead.astro';
+import Panel from '../../components/Panel.astro';
+import { LOCALES, localePath, toLocale, useTranslations } from '../../i18n';
+import { PENDING_SECTIONS, type SectionKey } from '../../lib/sections';
+
+export function getStaticPaths() {
+  return LOCALES.flatMap((lang) => PENDING_SECTIONS.map((s) => ({ params: { lang, section: s.key } })));
+}
+
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const key = PENDING_SECTIONS.find((s) => s.key === Astro.params.section)!.key as Exclude<SectionKey, 'tiers' | 'stats' | 'heroes' | 'items' | 'players'>;
+---
+
+<BaseLayout lang={lang} title={t.nav[key]} noindex>
+  <PageHead title={t.nav[key]} description={t.home.sectionDesc[key]}>
+    <span class="chip bg-copper-400/12 text-copper-400">{t.common.comingSoon}</span>
+  </PageHead>
+
+  <div class="grid gap-5 lg:grid-cols-[minmax(0,1fr)_21rem]">
+    <Panel id="status" title={t.comingSoon.heading} bodyClass="px-4 pt-1 pb-5">
+      <p class="max-w-2xl text-paper-200">{t.comingSoon.body}</p>
+      <h3 class="mt-6 text-xs font-semibold text-paper-400">{t.comingSoon.planned}</h3>
+      <ol class="mt-2 max-w-2xl divide-y divide-line">
+        {
+          t.comingSoon.sections[key].map((line, i) => (
+            <li class="flex items-baseline gap-3 py-2.5">
+              <span class="w-5 flex-none font-bold text-brass-400 tabular-nums">{i + 1}</span>
+              <span>{line}</span>
+            </li>
+          ))
+        }
+      </ol>
+    </Panel>
+
+    <Panel id="links" title={t.common.viewAll} as="div">
+      <ul class="px-2 pb-2">
+        {
+          (['heroes', 'items'] as const).map((k) => (
+            <li>
+              <a href={localePath(lang, k)} class="group block rounded-md px-2 py-2.5 hover:bg-ink-850">
+                <span class="font-semibold group-hover:text-brass-200">{t.nav[k]} →</span>
+                <span class="block text-[0.8125rem] text-paper-400">{t.home.sectionDesc[k]}</span>
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </Panel>
+  </div>
+</BaseLayout>

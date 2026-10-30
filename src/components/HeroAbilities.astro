@@ -1,0 +1,102 @@
+---
+/**
+ * 영웅 머리의 능력 아이콘 4개 — 능력 탭 대신 (2026-10-02 사용자 요청). 이름 로고 아래 작은 한 줄,
+ * 아이콘마다 게임 기본 키(1–4) 배지 (롤 사이트의 Q/W/E/R 처럼). 궁극기(4)는 구리색 테두리·배지.
+ * 마우스를 올리면 아이콘 줄 아래에 능력 카드(AbilityCard 그대로)가 뜨고, 누르면 고정된다(다시 누르거나 바깥·Esc 로 닫힘).
+ * 모바일(sm 미만)은 누르면 화면 아래쪽에 카드가 올라온다 — 아이콘 줄이 초상 오른쪽이라 아래로 펼치면 화면 밖으로 넘치기 때문.
+ * 카드와 아이콘 사이 틈은 투명한 pt-2 로 메워, 마우스를 카드로 옮겨도 닫히지 않는다.
+ */
+import AbilityCard from './AbilityCard.astro';
+import type { Ability } from '../data';
+import { fill } from '../lib/format';
+import { useTranslations, type Locale } from '../i18n';
+import { gameImage } from '../lib/images';
+
+interface Props {
+  lang: Locale;
+  abilities: Ability[];
+}
+const { lang, abilities } = Astro.props;
+const t = useTranslations(lang);
+const list = [...abilities].sort((a, b) => a.slot - b.slot);
+const icons = await Promise.all(list.map((a) => gameImage(a.image, 72, 72)));
+---
+
+{/* 휴대폰은 남은 폭을 4칸으로 나눠 아이콘이 줄어들 수 있게 (320px 화면에서 넘쳤다), sm 이상은 고정 크기 한 줄 */}
+<div data-abilities class="relative grid grid-cols-4 gap-1.5 sm:flex sm:gap-2.5">
+  {
+    list.map((a, i) => (
+      <div data-ability class="group/ab">
+        <button
+          type="button"
+          data-ability-btn
+          aria-expanded="false"
+          aria-controls={`ability-${a.slot}`}
+          aria-label={`${fill(t.heroes.abilitySlot, { n: a.slot })} · ${a.name}`}
+          class="relative block w-full max-w-11 sm:max-w-none"
+        >
+          <span
+            class:list={[
+              'grid aspect-square w-full place-items-center rounded-md bg-ink-850 ring-1 ring-inset transition-colors duration-150 group-hover/ab:bg-ink-800 sm:size-14',
+              a.slot === 4 ? 'ring-copper-400/40' : 'ring-line',
+              'group-data-[open]/ab:ring-2 group-data-[open]/ab:ring-brass-400',
+            ]}
+          >
+            {icons[i] ? (
+              <img src={icons[i]} alt="" width="36" height="36" class="size-[64%] sm:size-9" />
+            ) : (
+              <span class="text-lg font-bold text-paper-400">{a.slot}</span>
+            )}
+          </span>
+          <span
+            aria-hidden="true"
+            class:list={[
+              'absolute -right-1 -bottom-1 grid size-4 place-items-center rounded-xs text-[0.625rem] leading-none font-bold sm:size-5 sm:text-xs',
+              a.slot === 4 ? 'bg-copper-400 text-ink-950' : 'bg-ink-700 text-paper-50',
+            ]}
+          >
+            {a.slot}
+          </span>
+        </button>
+        <div
+          id={`ability-${a.slot}`}
+          class:list={[
+            'z-40 hidden sm:group-hover/ab:block group-data-[open]/ab:block',
+            // 데스크톱: 아이콘 줄 아래 · 모바일: 화면 아래쪽
+            'max-sm:fixed max-sm:inset-x-3 max-sm:bottom-3 max-sm:max-h-[70dvh] max-sm:overflow-y-auto max-sm:overscroll-contain',
+            'sm:absolute sm:top-full sm:left-0 sm:w-[min(32rem,calc(100vw-2rem))] sm:pt-2',
+          ]}
+        >
+          <div class="rounded-lg shadow-[0_16px_40px_rgb(0_0_0/0.55)]">
+            <AbilityCard ability={a} lang={lang} />
+          </div>
+        </div>
+      </div>
+    ))
+  }
+</div>
+
+<script>
+  // 누르면 고정 — 한 번에 하나만. 다른 능력에 마우스를 올리면 고정된 카드는 닫는다 (겹치지 않게)
+  document.querySelectorAll<HTMLElement>('[data-abilities]').forEach((root) => {
+    const items = [...root.querySelectorAll<HTMLElement>('[data-ability]')];
+    const setOpen = (target: HTMLElement | null) =>
+      items.forEach((it) => {
+        const on = it === target;
+        it.toggleAttribute('data-open', on);
+        it.querySelector('[data-ability-btn]')?.setAttribute('aria-expanded', String(on));
+      });
+    items.forEach((it) => {
+      it.querySelector('[data-ability-btn]')?.addEventListener('click', () => setOpen(it.hasAttribute('data-open') ? null : it));
+      it.addEventListener('mouseenter', () => {
+        if (items.some((x) => x !== it && x.hasAttribute('data-open'))) setOpen(null);
+      });
+    });
+    document.addEventListener('click', (e) => {
+      if (!root.contains(e.target as Node)) setOpen(null);
+    });
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Escape') setOpen(null);
+    });
+  });
+</script>

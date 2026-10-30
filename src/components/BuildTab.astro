@@ -1,0 +1,217 @@
+---
+/**
+ * 영웅 상세 '빌드' 탭 — 위의 분할 버튼(.seg, 다른 페이지 필터와 같은 모양)으로 보기를 고른다.
+ *   [공식 인기] [추천 빌드 N] [상위권 인기] [상위권 통계]
+ * 상위권 인기 = 예지자+ 14일 사용 순위 (2026-10-03 초월자+ → 예지자+) 하나로 통일 (2026-10-03): 따로 보기에선 작성자 상관없이 1–3위, 추천 빌드가 그 순위 안이면 같은 이름의 배지.
+ * (2026-10-02 에 1–3위 보기를 뺐다가 10-03 다시 살리며 '초월자+ 인기' 와 '상위권 인기' 가 겹쳐 보여 이름을 하나로 합쳤다)
+ * 프로 빌드는 영웅마다 30명 넘게 나올 수 있어 버튼 하나로 묶고, 안에서 선수(최근 수정 순)를 다시 고른다.
+ * 처음엔 프로 빌드가 있으면 프로 빌드, 없으면 공식 인기. 모든 게임 빌드는 같은 틀(BuildCard: 아이템 묶음 + 스킬 순서).
+ * 숨김은 data-hidden (.grid 를 이기는 !important 규칙, global.css).
+ */
+import Panel from './Panel.astro';
+import PopularItems from './PopularItems.astro';
+import BuildCard from './BuildCard.astro';
+import HeroBuild from './HeroBuild.astro';
+import SkillMaxOrder from './SkillMaxOrder.astro';
+import type { Ability, HeroInsights, HeroPopularItems, Item, ProBuild, Rank, TopBuild } from '../data';
+import { useTranslations, type Locale } from '../i18n';
+import { fill, formatNumber } from '../lib/format';
+
+interface Props {
+  lang: Locale;
+  items: Item[];
+  abilities: Ability[];
+  popular?: HeroPopularItems;
+  pro: ProBuild[];
+  top: TopBuild[];
+  insights: HeroInsights | null;
+  patchFrom?: number;
+  ranks: Rank[];
+}
+const { lang, items, abilities, popular, pro, top, insights, patchFrom, ranks } = Astro.props;
+/** 막 나온 영웅 — 예지자+ 표본이 없어 전체 랭크 순위 */
+const topAll = top.some((b) => b.allRanks);
+const t = useTranslations(lang);
+const num = (n: number) => formatNumber(lang, n);
+
+type View = { id: string; label: string; kind: 'official' | 'pro' | 'top' | 'stats'; index: number };
+const views: View[] = [
+  ...(pro.length ? [{ id: 'pro', label: t.heroes.proTitle, kind: 'pro', index: 0 } as View] : []),
+  ...(popular ? [{ id: 'official', label: t.heroes.buildOfficial, kind: 'official', index: 0 } as View] : []),
+  ...(top.length ? [{ id: 'top', label: topAll ? t.heroes.buildPopularAll : t.heroes.buildTop, kind: 'top', index: 0 } as View] : []),
+  ...(insights ? [{ id: 'stats', label: t.heroes.buildStats, kind: 'stats', index: 0 } as View] : []),
+];
+// 버튼 순서는 공식 → 프로 → 최상위권 → 통계, 처음 보이는 건 프로가 있으면 첫 프로
+const order: View['kind'][] = ['official', 'pro', 'top', 'stats'];
+const buttons = [...views].sort((a, b) => order.indexOf(a.kind) - order.indexOf(b.kind));
+const initial = views[0]?.id;
+---
+
+{/* 스킬 선마 — 보기와 상관없이 맨 위 (2026-10-08 사용자 요청) */}
+{insights && <SkillMaxOrder lang={lang} abilities={abilities} insights={insights} />}
+
+{
+  views.length > 0 && (
+    <div data-build-views class="grid grid-cols-[minmax(0,1fr)] gap-4">
+      <div role="tablist" aria-label={t.heroes.buildPicker} class="seg max-w-full justify-self-start max-sm:flex-wrap sm:overflow-x-auto">
+        {buttons.map((v) => (
+          <button type="button" role="tab" data-build-view-btn={v.id} aria-pressed={v.id === initial ? 'true' : 'false'} aria-selected={v.id === initial ? 'true' : 'false'}>
+            {v.label}
+            {v.kind === 'pro' && <span class="ml-1 text-xs tabular-nums opacity-60">{pro.length}</span>}
+          </button>
+        ))}
+      </div>
+
+      {views.map((v) => (
+        <div data-build-view={v.id} data-hidden={v.id !== initial ? '' : undefined} class="grid grid-cols-[minmax(0,1fr)] gap-4">
+          {v.kind === 'official' && popular && <PopularItems lang={lang} popular={popular} items={items} />}
+          {v.kind === 'pro' && (
+            <Panel title={t.heroes.proTitle} bodyClass="px-4 pb-4">
+              <div data-pro-picker class="grid grid-cols-[minmax(0,1fr)] gap-4">
+                <div role="group" aria-label={t.heroes.proPicker} class="flex flex-wrap gap-1.5">
+                  {pro.map((p, i) => {
+                    const old = p.build && patchFrom ? p.build.updatedAt < patchFrom : false;
+                    return (
+                      <button
+                        type="button"
+                        data-pro-btn={i}
+                        data-pro-name={p.pro}
+                        aria-pressed={i === 0 ? 'true' : 'false'}
+                        title={p.build?.name}
+                        class:list={[
+                          'rounded-sm px-2.5 py-1 text-sm transition-colors duration-150',
+                          'bg-ink-850 text-paper-200 hover:bg-ink-800 hover:text-paper-50',
+                          'aria-pressed:bg-paper-200 aria-pressed:font-semibold aria-pressed:text-ink-950',
+                          old && 'opacity-60',
+                        ]}
+                      >
+                        {p.pro}
+                        {p.usage && <span class="ml-1.5 inline-block size-1.5 rounded-full bg-copper-400 align-middle" title={t.heroes.buildUsageHint} />}
+                      </button>
+                    );
+                  })}
+                </div>
+                {pro.map((p, i) => (
+                  <div data-pro-card={i} data-hidden={i ? '' : undefined}>
+                    <BuildCard
+                      lang={lang}
+                      items={items}
+                      abilities={abilities}
+                      title={p.pro}
+                      meta={p.usage && t.heroes.buildUsage}
+                      buildId={p.buildId}
+                      build={p.build}
+                      note={p.note}
+                      source={p.source}
+                      patchFrom={patchFrom}
+                      perf={p.perf}
+                      author={p.author}
+                      ranks={ranks}
+                    />
+                  </div>
+                ))}
+              </div>
+              <p class="mt-3 text-xs text-paper-500">{t.heroes.proNote} · {t.heroes.buildPerfNote}</p>
+            </Panel>
+          )}
+          {v.kind === 'top' && (
+            <Panel title={topAll ? t.heroes.buildPopularAll : t.heroes.buildTop} bodyClass="px-4 pb-4">
+              <div data-pro-picker class="grid grid-cols-[minmax(0,1fr)] gap-4">
+                <div role="group" aria-label={t.heroes.buildTop} class="flex flex-wrap gap-1.5">
+                  {top.map((b, i) => (
+                    <button
+                      type="button"
+                      data-pro-btn={i}
+                      aria-pressed={i === 0 ? 'true' : 'false'}
+                      title={b.build.name}
+                      class="rounded-sm bg-ink-850 px-2.5 py-1 text-sm text-paper-200 transition-colors duration-150 hover:bg-ink-800 hover:text-paper-50 aria-pressed:bg-paper-200 aria-pressed:font-semibold aria-pressed:text-ink-950"
+                    >
+                      {fill(t.heroes.buildTopN, { n: b.rank })}
+                    </button>
+                  ))}
+                </div>
+                {top.map((b, i) => (
+                  <div data-pro-card={i} data-hidden={i ? '' : undefined}>
+                    <BuildCard
+                      lang={lang}
+                      items={items}
+                      abilities={abilities}
+                      title={b.authorName ?? fill(t.heroes.buildTopN, { n: b.rank })}
+                      meta={fill(t.heroes.buildTopMeta, { players: num(b.players), matches: num(b.matches) })}
+                      buildId={b.build.buildId}
+                      build={b.build}
+                      patchFrom={patchFrom}
+                      perf={b.perf}
+                      author={b.author}
+                      ranks={ranks}
+                    />
+                  </div>
+                ))}
+              </div>
+              <p class="mt-3 text-xs text-paper-500">{topAll ? t.heroes.buildAllNote : t.heroes.buildTopNote} · {t.heroes.buildPerfNote}</p>
+            </Panel>
+          )}
+          {v.kind === 'stats' && insights && <HeroBuild lang={lang} insights={insights} abilities={abilities} items={items} />}
+        </div>
+      ))}
+    </div>
+  )
+}
+
+<script>
+  // 빌드 고르기
+  document.querySelectorAll<HTMLElement>('[data-build-views]').forEach((root) => {
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>('[data-build-view-btn]')];
+    buttons.forEach((btn) =>
+      btn.addEventListener('click', () => {
+        buttons.forEach((b) => {
+          b.setAttribute('aria-selected', String(b === btn));
+          b.setAttribute('aria-pressed', String(b === btn));
+        });
+        root.querySelectorAll<HTMLElement>('[data-build-view]').forEach((v) => v.toggleAttribute('data-hidden', v.dataset.buildView !== btn.dataset.buildViewBtn));
+      }),
+    );
+  });
+  // 프로 빌드 안에서 선수 고르기
+  document.querySelectorAll<HTMLElement>('[data-pro-picker]').forEach((root) => {
+    const buttons = [...root.querySelectorAll<HTMLButtonElement>('[data-pro-btn]')];
+    buttons.forEach((btn) =>
+      btn.addEventListener('click', () => {
+        buttons.forEach((b) => b.setAttribute('aria-pressed', String(b === btn)));
+        root.querySelectorAll<HTMLElement>('[data-pro-card]').forEach((c) => c.toggleAttribute('data-hidden', c.dataset.proCard !== btn.dataset.proBtn));
+      }),
+    );
+  });
+  // 빌드 페이지 카드에서 왔으면 그 빌드를 연다 — ?build=pro:이름 / top:순위
+  const want = new URLSearchParams(location.search).get('build');
+  if (want) {
+    const [kind, value] = [want.slice(0, want.indexOf(':')), want.slice(want.indexOf(':') + 1)];
+    const view = kind === 'pro' ? 'pro' : kind === 'top' ? 'top' : '';
+    document.querySelector<HTMLButtonElement>(`[data-build-view-btn="${view}"]`)?.click();
+    if (kind === 'pro') [...document.querySelectorAll<HTMLButtonElement>('[data-pro-name]')].find((b) => b.dataset.proName === value)?.click();
+    if (kind === 'top') document.querySelector<HTMLElement>('[data-build-view="top"]')?.querySelector<HTMLButtonElement>(`[data-pro-btn="${Number(value) - 1}"]`)?.click();
+  }
+  // 빌드 ID 복사 — 게임 빌드 검색에 붙여 넣는다
+  // 복사되면 잠깐 체크 아이콘 + '복사됨'
+  document.querySelectorAll<HTMLButtonElement>('[data-copy-build]').forEach((btn) => {
+    const text = btn.querySelector<HTMLElement>('[data-copy-label]')!;
+    const copyIcon = btn.querySelector('[data-icon="copy"]')!;
+    const checkIcon = btn.querySelector('[data-icon="check"]')!;
+    const label = text.textContent ?? '';
+    btn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(btn.dataset.copyBuild ?? '');
+        text.textContent = btn.dataset.copied ?? label;
+        copyIcon.classList.add('hidden');
+        checkIcon.classList.remove('hidden');
+        setTimeout(() => {
+          text.textContent = label;
+          copyIcon.classList.remove('hidden');
+          checkIcon.classList.add('hidden');
+        }, 1500);
+      } catch {
+        /* 복사가 막힌 브라우저 — ID 는 버튼 글자로 보인다 */
+      }
+    });
+  });
+</script>

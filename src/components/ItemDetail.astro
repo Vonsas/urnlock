@@ -1,0 +1,178 @@
+---
+/**
+ * 아이템 상세 — 카드를 클릭하면 뜨는 작은 창의 내용. 게임 툴팁과 같은 구성:
+ *   머리(그림·이름·분류·가격) → 하위/상위 아이템 → 기본 효과 → 패시브 → 액티브(재사용 대기)
+ *   핵심 수치는 큰 칸, 수치마다 마력·부운 계수, 조건, 발동 중 여부, 불리한 효과(빨강)
+ */
+import type { Item, ItemEffectValue, RichText } from '../data';
+import type { ShopLookupEntry } from './ShopItem.astro';
+import { useTranslations, type Locale } from '../i18n';
+import { fill, formatItemStatValue, formatNumber } from '../lib/format';
+import ScaleIcon from './ScaleIcon.astro';
+
+interface Props {
+  item: Item;
+  lang: Locale;
+  lookup: Map<string, ShopLookupEntry>;
+}
+const { item: i, lang, lookup } = Astro.props;
+const t = useTranslations(lang);
+const tip = t.items.tip;
+const src = lookup.get(i.slug)?.src;
+
+const catText = { weapon: 'text-weapon', vitality: 'text-vitality', spirit: 'text-spirit' } as const;
+const toneText = (v: ItemEffectValue) =>
+  v.negative
+    ? 'text-nerf'
+    : { weapon: 'text-weapon', spirit: 'text-spirit', vitality: 'text-vitality', neutral: 'text-paper-50' }[v.tone];
+const num = (n: number) => formatNumber(lang, n, 3);
+const scaleText = (v: ItemEffectValue) =>
+  v.scale && fill(v.scale.kind === 'spirit' ? tip.spiritScale : tip.boonScale, { n: num(v.scale.amount) });
+const sectionLabel = { innate: tip.innate, passive: tip.passive, active: tip.active } as const;
+const lines = (rich: RichText[]) => rich.flatMap((seg) => seg.text.split('\n').map((text, n) => ({ ...seg, text, br: n > 0 })));
+const related = [
+  { label: tip.components, slugs: i.components ?? [] },
+  { label: tip.upgradesTo, slugs: i.upgradesTo ?? [] },
+].filter((r) => r.slugs.length);
+import SoulIcon from './SoulIcon.astro';
+---
+
+<div>
+  <!-- 머리 (오른쪽 위는 닫기 단추 자리) -->
+  <div class="flex items-start gap-3.5 px-5 pt-5 pr-14 pb-4">
+    <span class="size-14 flex-none overflow-hidden rounded-xs bg-ink-900">
+      {src && <img src={src} alt="" loading="lazy" decoding="async" class="size-full object-cover" />}
+    </span>
+    <div class="min-w-0 flex-1">
+      <h2 class="text-lg leading-tight font-bold text-paper-50">{i.name}</h2>
+      <p class:list={['mt-1 text-xs font-semibold', catText[i.category]]}>
+        {t.items.categories[i.category]} · {fill(t.items.tier, { n: i.tier })}
+        {i.isActive && <span class="text-brass-400"> · {t.items.active}</span>}
+      </p>
+      <p class="mt-1.5 flex items-center gap-1.5 text-sm font-bold text-paper-50 tabular-nums">
+        <SoulIcon />
+        {formatNumber(lang, i.cost)}
+        <span class="text-xs font-normal text-paper-500">{t.common.souls}</span>
+      </p>
+    </div>
+  </div>
+
+  <!-- 하위·상위 아이템 -->
+  {
+    related.map((r) => (
+      <div class="flex items-start gap-3 px-5 pb-3 text-xs">
+        <span class="w-16 flex-none pt-1 text-paper-500">{r.label}</span>
+        <span class="flex flex-wrap gap-1.5">
+          {r.slugs.map((slug) => {
+            const c = lookup.get(slug);
+            return c ? (
+              <button
+                type="button"
+                data-open-item={slug}
+                class="flex items-center gap-1.5 rounded-xs bg-ink-800 py-1 pr-2 pl-1 text-paper-200 transition-colors duration-150 hover:bg-ink-700 hover:text-paper-50"
+              >
+                <span class="size-5 overflow-hidden rounded-[1px] bg-ink-900">
+                  {c.src && <img src={c.src} alt="" loading="lazy" decoding="async" class="size-full object-cover" />}
+                </span>
+                {c.name}
+              </button>
+            ) : null;
+          })}
+        </span>
+      </div>
+    ))
+  }
+
+  {
+    i.effects?.length ? (
+      i.effects.map((section) => (
+        <section class="border-t border-line px-5 py-4">
+          <h3 class="mb-2 flex items-center justify-between text-xs font-bold tracking-wide uppercase">
+            <span class:list={[section.kind === 'active' ? 'text-brass-400' : section.kind === 'passive' ? 'text-paper-200' : 'text-paper-500']}>
+              {sectionLabel[section.kind]}
+            </span>
+            {section.cooldown && (
+              <span class="font-semibold text-paper-400 normal-case tabular-nums">
+                {tip.cooldown} <span class="text-paper-50">{fill(tip.seconds, { n: num(section.cooldown) })}</span>
+              </span>
+            )}
+          </h3>
+          {section.blocks.map((block) => (
+            <div class="[&+&]:mt-4">
+              {block.description && (
+                <p class="text-sm leading-relaxed text-paper-400">
+                  {lines(block.description).map((seg) => (
+                    <>
+                      {seg.br && <br />}
+                      <span class:list={[seg.style === 'highlight' && 'font-semibold text-paper-50', seg.style === 'dim' && 'text-paper-500']}>
+                        {seg.text}
+                      </span>
+                    </>
+                  ))}
+                </p>
+              )}
+              {block.key.length > 0 && (
+                <ul class="mt-3 grid grid-cols-2 gap-1.5">
+                  {block.key.map((v) => (
+                    <li class="rounded-xs bg-ink-800 px-3 py-2">
+                      <p class:list={['text-lg leading-tight font-bold tabular-nums', toneText(v)]}>{v.value}</p>
+                      <p class="mt-0.5 text-xs leading-tight text-paper-400">{v.label}</p>
+                      {(v.scale || v.condition || v.whileActive) && (
+                        <p class="mt-1 text-[0.6875rem] leading-tight">
+                          {v.scale && (
+                            <span class={v.scale.kind === 'spirit' ? 'text-spirit' : 'text-boon'}>
+                              <ScaleIcon kind={v.scale.kind} label={v.scale.kind === 'boon' ? t.heroes.perBoon : t.heroes.stat.spiritPower} />
+                              {scaleText(v)}{' '}
+                            </span>
+                          )}
+                          {v.condition && <span class="text-paper-500">{v.condition} </span>}
+                          {v.whileActive && !v.condition && <span class="text-paper-500">{tip.whileActive}</span>}
+                        </p>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              )}
+              {block.values.length > 0 && (
+                <ul class:list={['space-y-1 text-sm', (block.description || block.key.length > 0) && 'mt-3']}>
+                  {block.values.map((v) => (
+                    <li class="iv-row">
+                      <span class="min-w-0 text-paper-400">
+                        {v.label}
+                        {v.condition && <span class="text-paper-500"> · {v.condition}</span>}
+                        {v.whileActive && !v.condition && <span class="text-paper-500"> · {tip.whileActive}</span>}
+                      </span>
+                      <span class="iv-val">
+                        <span class:list={['font-semibold', toneText(v)]}>{v.value}</span>
+                        {v.scale && (
+                          <span class:list={['ml-1.5 text-xs', v.scale.kind === 'spirit' ? 'text-spirit' : 'text-boon']}>
+                            <ScaleIcon kind={v.scale.kind} label={v.scale.kind === 'boon' ? t.heroes.perBoon : t.heroes.stat.spiritPower} />
+                            {scaleText(v)}
+                          </span>
+                        )}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          ))}
+        </section>
+      ))
+    ) : (
+      <>
+        {i.stats.length > 0 && (
+          <ul class="space-y-1 border-t border-line px-5 py-4 text-sm">
+            {i.stats.map((s) => (
+              <li class="flex justify-between gap-3">
+                <span class="text-paper-400">{t.items.stat[s.key]}</span>
+                <span class="font-semibold text-paper-50 tabular-nums">{formatItemStatValue(lang, s)}</span>
+              </li>
+            ))}
+          </ul>
+        )}
+        {i.description && <p class="border-t border-line px-5 py-4 text-sm leading-relaxed text-paper-400">{i.description}</p>}
+      </>
+    )
+  }
+</div>

@@ -1,0 +1,47 @@
+---
+/**
+ * 관리자 화면 (2026-10-06) — 유저 팁 승인. 주소 /admin/ (메뉴·사이트맵에 없고 검색 엔진 제외).
+ * 가이드 탭 = 최근 가이드 200편 (내리기 · 계정 차단). 사진 탭 = 사진이 있는 최근 가이드, 사진마다 삭제 (2026-10-09 검토 단계 뺌). 신고 탭 = 신고 많은 순, 내리기 · 계정 차단 · 신고 무시.
+ * 비밀번호(환경 변수 ADMIN_PASSWORD)로 들어가면 공개됨(글 팁은 검사 후 바로 공개) / 승인 대기(나중에 붙일 사진 팁) 목록에서 내리기 · 계정 차단.
+ * 화면은 scripts/admin.ts 가 그린다. 서버 검사는 api/admin/* 가 한다 (이 페이지 자체엔 비밀이 없다).
+ */
+import BaseLayout from '../layouts/BaseLayout.astro';
+import { getHeroes, getRanks } from '../data';
+
+const [heroes, ranks] = await Promise.all([getHeroes('ko'), getRanks('ko')]);
+const config = {
+  heroes: Object.fromEntries(heroes.filter((h) => h.id !== undefined).map((h) => [h.id!, { name: h.name, slug: h.slug }])),
+  ranks: Object.fromEntries(ranks.map((r) => [r.tier, r.name])),
+};
+const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
+---
+
+<BaseLayout lang="ko" title="관리" noindex>
+  <h1 class="pt-8 pb-4 text-3xl font-extrabold">관리 · 유저 팁 · 가이드</h1>
+  <div data-admin class="max-w-4xl">
+    <form data-admin-login class="flex max-w-md gap-2">
+      <label class="sr-only" for="admin-pw">관리자 비밀번호</label>
+      <input id="admin-pw" name="password" type="password" autocomplete="current-password" required placeholder="관리자 비밀번호" class="field h-10 flex-1" />
+      <button class="rounded-md bg-brass-400 px-4 font-bold text-ink-950 hover:bg-brass-200">들어가기</button>
+    </form>
+    <p data-admin-msg class="mt-3 text-sm text-paper-400" role="status"></p>
+    <div data-admin-view hidden>
+      <div class="flex flex-wrap items-center gap-3">
+        <div class="seg" role="group" aria-label="목록">
+          <button type="button" data-status="approved" aria-pressed="true">공개됨</button>
+          <button type="button" data-status="pending" aria-pressed="false">승인 대기</button>
+          <button type="button" data-status="guides" aria-pressed="false">가이드</button>
+          <button type="button" data-status="photos" aria-pressed="false">사진</button>
+          <button type="button" data-status="reports" aria-pressed="false">신고</button>
+        </div>
+        <button type="button" data-admin-logout class="ml-auto text-sm text-paper-400 hover:text-paper-50">로그아웃</button>
+      </div>
+      <ul data-admin-list class="panel mt-4 divide-y divide-line"></ul>
+    </div>
+  </div>
+  <script type="application/json" id="admin-config" set:html={configJson} />
+</BaseLayout>
+
+<script>
+  import '../scripts/admin.ts';
+</script>

@@ -1,0 +1,136 @@
+---
+/**
+ * 티어 · 통계(승률표) 공통 도구 줄 — 기간, 랭크 구간, 기준 줄. (예전의 [티어 | 승률표] 탭은 통계가 메뉴로 빠지며 없앴다)
+ * 버튼 동작과 화면 그리기는 src/scripts/tiers.ts (data-tier-* 속성).
+ *
+ * - 티어 탭: 최근 2주 랭크 매치 · [전령사 이상 | 전령사 미만] (하위권은 2026-10-08 사용자 요청). 패치한 지 2주가 안 됐을 때만 [현재 패치만] 버튼.
+ * - 승률표(통계): 기간 자유, [랭크 | 일반] (2026-10-29 사용자 — 예전 '전체(일반 포함)' 버튼 대신). 랭크는 단계 1–11 중 범위
+ *   (범위 계산은 브라우저가 단계별 원본을 더해서), 일반은 범위 없이 승률 · 픽률 · 판수만.
+ *   [승률표 | 랭크별 | 라인전] 보기 전환은 2026-10-29 뺐다 (사용자: 가독성이 떨어짐 — 코드는 git 기록에).
+ */
+import { useTranslations, type Locale } from '../i18n';
+import { getRanks, getTierData } from '../data';
+import { gameImage } from '../lib/images';
+
+interface Props {
+  lang: Locale;
+  active: 'tier' | 'stats';
+}
+const { lang, active } = Astro.props;
+const t = useTranslations(lang);
+const [ranks, tierData] = await Promise.all([getRanks(lang), getTierData()]);
+const rankName = (tier: number) => ranks.find((r) => r.tier === tier)?.name ?? `#${tier}`;
+const rankIcon = (tier: number) => gameImage(ranks.find((r) => r.tier === tier)?.image, 64, 64);
+
+// 티어 탭 기간: 최근 2주, 그리고 패치한 지 2주가 안 됐으면 현재 패치만
+const patchWindow = tierData?.windows.find((w) => w.key === 'patch');
+const recentPatch = Boolean(tierData && patchWindow && patchWindow.from > tierData.generatedAt - 14 * 86_400);
+const windows =
+  active === 'tier'
+    ? [
+        { key: '14d', label: t.tiers.tierRecent },
+        ...(recentPatch ? [{ key: 'patch', label: t.tiers.tierPatchOnly, hint: t.tiers.tierPatchOnlyHint }] : []),
+      ]
+    : (['patch', 'prev', '7d', '14d', '30d'] as const).map((key) => ({ key, label: t.tiers.windows[key] }));
+/** 기본값 — src/scripts/tiers.ts 와 같게 */
+const defaultWindow = active === 'tier' ? '14d' : 'patch';
+
+// 승률표 랭크 범위 — 단계 1(개척가)–11(불멸자) 휘장을 한 줄로, 양 끝을 끌어 범위를 고른다 (2026-10-03 사용자 요청: 구간 버튼 대신 범위 선택)
+// 티어 탭 랭크 버튼 — 휘장 하나 + '전령사 +' / '전령사 미만' (2026-10-15 사용자: 휘장 두 개 + 범위 이름은 조잡 → OP.GG 식).
+// 2026-10-10 엔 방송인이 '전령사 이상' 만 보고 저티어 기준으로 오해해 범위 이름을 썼었다 — 이제 휘장으로 위치를 보이고 정확한 범위는 마우스를 올리면(title).
+const bands =
+  active === 'tier'
+    ? await Promise.all(
+        [
+          { key: 'upper', from: 7, to: 11, icon: 7, label: t.tiers.tierUpperShort.replace('{rank}', rankName(7)) },
+          { key: 'lower', from: 1, to: 6, icon: 6, label: t.tiers.tierLower.replace('{rank}', rankName(7)) },
+        ].map(async (b) => ({ ...b, hint: `${rankName(b.from)} – ${rankName(b.to)}`, iconSrc: await rankIcon(b.icon) })),
+      )
+    : [];
+const steps =
+  active === 'tier'
+    ? []
+    : await Promise.all(Array.from({ length: 11 }, async (_, i) => ({ step: i + 1, name: rankName(i + 1), icon: await rankIcon(i + 1) })));
+---
+
+
+<div class="flex flex-wrap items-center gap-x-4 gap-y-2.5">
+  {
+    windows.length > 1 && (
+      <div
+        role="group"
+        aria-label={t.tiers.window}
+        class:list={['seg max-w-full sm:overflow-x-auto', windows.length > 2 ? 'max-sm:grid max-sm:w-full max-sm:grid-cols-5' : 'max-sm:flex-wrap']}
+      >
+        {/* 통계(기간 5개)는 모바일에서 한 줄 5칸 — 두 줄로 갈라지면 어색했다 (2026-10-10 모바일 점검) */}
+        {windows.map((w) => (
+          <button
+            type="button"
+            data-tier-window={w.key}
+            title={'hint' in w ? w.hint : undefined}
+            aria-pressed={w.key === defaultWindow ? 'true' : 'false'}
+            class:list={[windows.length > 2 && 'max-sm:!h-auto max-sm:min-h-7 max-sm:justify-center max-sm:!px-1 max-sm:py-1 max-sm:text-center max-sm:!text-xs max-sm:leading-tight max-sm:!whitespace-normal']}
+          >
+            {w.label}
+          </button>
+        ))}
+      </div>
+    )
+  }
+  {
+    active === 'tier' && (
+      <div role="group" aria-label={t.tiers.rank} class="seg max-w-full max-sm:grid max-sm:w-full max-sm:grid-cols-2">
+        {/* 모바일: 반씩 나란히 */}
+        {bands.map((b) => (
+          <button type="button" data-tier-rank={b.key} aria-pressed={b.key === 'upper' ? 'true' : 'false'} title={b.hint} class="justify-center gap-1.5 max-sm:!px-2">
+            {b.iconSrc && <img src={b.iconSrc} alt="" width="22" height="22" class="size-[1.375rem]" draggable="false" />}
+            <span>{b.label}</span>
+          </button>
+        ))}
+      </div>
+    )
+  }
+  {
+    active === 'tier' && (
+      <p class="text-sm font-semibold text-paper-200">
+        {windows.length === 1 && <span>{t.tiers.tierRecent} · </span>}
+        {t.tiers.tierScope}
+      </p>
+    )
+  }
+  {
+    steps.length > 0 && (
+      <div data-range-row class="flex basis-full flex-wrap items-center gap-x-4 gap-y-2">
+        <div role="group" aria-label={t.tiers.matchMode} class="seg">
+          <button type="button" data-match-mode="ranked" aria-pressed="true">
+            {t.tiers.modeRanked}
+          </button>
+          <button type="button" data-match-mode="normal" aria-pressed="false">
+            {t.tiers.modeNormal}
+          </button>
+        </div>
+        <div data-rank-range data-style="a" role="group" aria-label={t.tiers.rank} class="rank-range">
+          <div class="rank-range-band" data-range-band aria-hidden="true" />
+          <ol class="rank-range-icons">
+            {steps.map((s) => (
+              <li>
+                <button type="button" data-step={s.step} title={s.name} aria-label={s.name}>
+                  {s.icon ? <img src={s.icon} alt="" draggable="false" /> : <span class="text-2xs font-bold">{s.step}</span>}
+                  <span class="rank-range-seg" aria-hidden="true" />
+                </button>
+              </li>
+            ))}
+          </ol>
+          <div class="rank-range-track">
+            <div class="rank-range-fill" data-range-fill aria-hidden="true" />
+            <input type="range" min="1" max="11" step="1" value="1" data-range-lo aria-label={t.tiers.rangeFrom} />
+            <input type="range" min="1" max="11" step="1" value="11" data-range-hi aria-label={t.tiers.rangeTo} />
+          </div>
+        </div>
+        <span data-range-label class="text-sm font-semibold text-paper-50" />
+      </div>
+    )
+  }
+</div>
+<p class="mt-2.5 text-xs text-paper-400 tabular-nums" data-tier-basis></p>
+<p class="mt-1 text-xs font-semibold text-copper-400" data-tier-sample-note hidden></p>

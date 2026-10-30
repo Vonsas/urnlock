@@ -1,0 +1,46 @@
+---
+/**
+ * 영웅 초상. 게임 이미지가 있으면 그림을, 없으면(이미지 끔·받기 실패) 영웅별 색 + 머리글자를 그린다.
+ * lg 는 세로 초상을 위쪽 기준으로 잘라 얼굴이 보이게, sm/md 는 정사각 얼굴 아이콘.
+ */
+import type { HeroImages } from '../data';
+import { gameImage } from '../lib/images';
+import { initialsFor, tintFor } from '../lib/tint';
+
+interface Props {
+  slug: string;
+  name: string;
+  image?: HeroImages;
+  class?: string;
+  size?: 'sm' | 'md' | 'lg';
+}
+const { slug, name, image, class: className, size = 'md' } = Astro.props;
+const text = { sm: 'text-[0.6875rem]', md: 'text-lg', lg: 'text-4xl' }[size];
+
+const src =
+  size === 'lg'
+    ? ((await gameImage(image?.card, 280, 380)) ?? (await gameImage(image?.small, 128, 128)))
+    : await gameImage(image?.small ?? image?.card, size === 'sm' ? 64 : 128, size === 'sm' ? 64 : 128);
+---
+
+<div
+  role="img"
+  aria-label={name}
+  style={`--tint:${tintFor(slug)}`}
+  class:list={[
+    'relative grid place-items-center overflow-hidden bg-[color-mix(in_oklab,var(--tint)_32%,var(--color-ink-900))] font-bold tracking-tight text-[color-mix(in_oklab,var(--tint)_45%,var(--color-paper-50))]',
+    size === 'sm' ? 'rounded-xs' : 'rounded-md',
+    text,
+    className,
+  ]}
+>
+  {
+    src ? (
+      <img src={src} alt="" loading="lazy" decoding="async" class="absolute inset-0 size-full object-cover object-top" />
+    ) : (
+      <span aria-hidden="true" class="opacity-80">
+        {initialsFor(slug, size === 'sm' ? 1 : 2)}
+      </span>
+    )
+  }
+</div>

@@ -1,0 +1,27 @@
+---
+/** 패널 — 머리 띠(제목·보조 정보·링크) + 본문 */
+interface Props {
+  title: string;
+  id?: string;
+  href?: string;
+  linkLabel?: string;
+  /** 기준 · 설명 — 화면엔 안 보이고 제목에 마우스를 올리거나 포커스하면 공용 툴팁으로 (2026-10-28 사용자: 박스 구석 설명 글은 필수 아니면 없애기) */
+  hint?: string;
+  class?: string;
+  bodyClass?: string;
+  as?: 'section' | 'aside' | 'div';
+}
+const { title, id, href, linkLabel, hint, class: className, bodyClass, as: Tag = 'section' } = Astro.props;
+const headingId = id ? `${id}-title` : undefined;
+---
+
+<Tag id={id} aria-labelledby={headingId} class:list={['panel', className]}>
+  <div class="panel-head">
+    <h2 id={headingId} class="panel-title" data-tip={hint} tabindex={hint ? 0 : undefined} aria-description={hint}>{title}</h2>
+    <slot name="meta" />
+    {href && linkLabel && <a href={href} class="panel-link">{linkLabel} →</a>}
+  </div>
+  <div class={bodyClass}>
+    <slot />
+  </div>
+</Tag>

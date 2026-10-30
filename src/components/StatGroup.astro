@@ -1,0 +1,82 @@
+---
+/**
+ * 스탯 묶음 — 게임 UI처럼 무기(주황)/활력(초록)/영혼(보라)로 나눈 수치 표.
+ * 열: 항목 | 기본 | 부운당 | 최대 레벨. 오르지 않는 수치는 최대 레벨 칸에 기본값을 흐리게.
+ * 값 옆 작은 '3/39' = 영웅 간 순위 (값이 큰 쪽이 1위, 지표 탭과 같은 색: 상위 5 강조 · 하위 5 흐리게).
+ */
+import type { ItemCategory } from '../data';
+import ScaleIcon from './ScaleIcon.astro';
+
+export interface StatLine {
+  label: string;
+  value: string;
+  perBoon?: string;
+  /** 최대 레벨 값. 없으면 기본값과 같다 */
+  max?: string;
+  /** 영웅 간 순위 — 기본값 · 최대 레벨 값 */
+  rank?: { rank: number; total: number };
+  maxRank?: { rank: number; total: number };
+}
+interface Props {
+  title: string;
+  /** 제목 옆 보조 문구 (무기 이름 등) */
+  subtitle?: string;
+  category: ItemCategory;
+  lines: StatLine[];
+  columns: { base: string; perBoon: string; max: string };
+}
+const { title, subtitle, category, lines, columns } = Astro.props;
+const dot = { weapon: 'bg-weapon', vitality: 'bg-vitality', spirit: 'bg-spirit' }[category];
+const text = { weapon: 'text-weapon', vitality: 'text-vitality', spirit: 'text-spirit' }[category];
+const rankTone = (r: { rank: number; total: number }) =>
+  r.rank <= 5 ? 'text-brass-200' : r.rank > r.total - 5 ? 'text-paper-500/70' : 'text-paper-400';
+---
+
+<section class="panel px-4 pt-4 pb-3 sm:px-5">
+  <h3 class="flex min-w-0 items-center gap-2 text-base font-bold">
+    <span class:list={['size-2 flex-none rounded-full', dot]} aria-hidden="true"></span>
+    <span class={text}>{title}</span>
+    {subtitle && <span class="min-w-0 truncate text-sm font-medium text-paper-400">{subtitle}</span>}
+  </h3>
+  <table class="mt-3 w-full text-sm">
+    <thead class="text-xs text-paper-500">
+      <tr>
+        <th scope="col" class="sr-only">{title}</th>
+        {/* 값 옆 순위 칸(ml-1 + w-8 = 2.25rem, sm 이상 ml-1.5 + w-9 = 2.625rem)만큼 비워 머리글 끝을 값 끝에 맞춘다 */}
+        <th scope="col" class="pr-[2.25rem] pb-1.5 text-right font-medium sm:pr-[2.625rem]">{columns.base}</th>
+        <th scope="col" class="pb-1.5 text-right font-medium">
+          <ScaleIcon kind="boon" label={columns.perBoon} class="text-[0.9375rem]" />
+        </th>
+        <th scope="col" class="pr-[2.25rem] pb-1.5 text-right font-medium sm:pr-[2.625rem]">{columns.max}</th>
+      </tr>
+    </thead>
+    <tbody>
+      {
+        lines.map((l) => (
+          <tr class="border-t border-line">
+            <th scope="row" class="py-2 pr-2 text-left font-normal text-paper-400 sm:pr-3">{l.label}</th>
+            <td class="py-2 text-right font-semibold whitespace-nowrap text-paper-50 tabular-nums">
+              {l.value}
+              {/* 순위가 없는 줄도 같은 폭을 비워 값 열을 맞춘다 */}
+              <span class:list={['ml-1 inline-block w-8 text-right text-2xs font-medium sm:ml-1.5 sm:w-9', l.rank && rankTone(l.rank)]}>
+                {l.rank && `${l.rank.rank}/${l.rank.total}`}
+              </span>
+            </td>
+            <td class="w-12 py-2 text-right sm:w-16 text-xs font-semibold whitespace-nowrap text-boon tabular-nums">{l.perBoon}</td>
+            <td
+              class:list={[
+                'w-24 py-2 text-right whitespace-nowrap tabular-nums sm:w-32',
+                l.max ? 'font-bold text-paper-50' : 'text-paper-500',
+              ]}
+            >
+              {l.max ?? l.value}
+              <span class:list={['ml-1 inline-block w-8 text-right text-2xs font-medium sm:ml-1.5 sm:w-9', l.maxRank && rankTone(l.maxRank)]}>
+                {l.maxRank && `${l.maxRank.rank}/${l.maxRank.total}`}
+              </span>
+            </td>
+          </tr>
+        ))
+      }
+    </tbody>
+  </table>
+</section>

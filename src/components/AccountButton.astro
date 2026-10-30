@@ -1,0 +1,37 @@
+---
+/**
+ * 헤더 오른쪽 위 계정 단추 (2026-10-07 사용자 요청) — 로그아웃 상태면 [로그인](스팀), 로그인 상태면 닉네임 ▾ → 내 전적 · 로그아웃.
+ * 모든 페이지에 있으므로 서버에 묻지 않는다: 로그인 때 같이 심는 표시 쿠키(ul_who = '계정ID.닉네임', 비밀 아님)를 읽어 바로 그린다.
+ * 실제 권한(글쓰기·추천)은 언제나 서버의 서명 쿠키로 판단한다. 그리기는 scripts/account.ts.
+ */
+import { localePath, useTranslations, type Locale } from '../i18n';
+
+interface Props {
+  lang: Locale;
+}
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+const btn = 'flex h-7 items-center gap-1 rounded-sm px-2 text-xs font-semibold text-paper-300 transition-colors duration-150 hover:bg-ink-800 hover:text-paper-50';
+---
+
+<div data-account data-players={localePath(lang, 'players')} class="relative">
+  {/* 320px 영어('Sign in')는 기본 여백이면 1px 넘쳐 아랫줄로 밀렸다 */}
+  <a data-account-login href="/api/auth/steam" title={t.account.loginTitle} class={`${btn} max-[359px]:px-1.5`}>{t.account.login}</a>
+  <div data-account-in hidden>
+    <button type="button" data-account-toggle aria-expanded="false" aria-haspopup="true" aria-label={t.account.menu} class={`${btn} sm:max-w-24 md:max-w-36 xl:max-w-28 2xl:max-w-36`}>
+      {/* 모바일 첫 줄(로고 · 언어 · 계정)엔 닉네임이 들어갈 자리가 없어 사람 모양만, 닉네임은 메뉴 안에 */}
+      <svg aria-hidden="true" viewBox="0 0 16 16" class="size-4 flex-none sm:hidden" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="8" cy="5.5" r="2.75"></circle><path d="M2.75 14c.6-2.9 2.7-4.5 5.25-4.5s4.65 1.6 5.25 4.5" stroke-linecap="round"></path></svg>
+      <span data-account-name class="hidden truncate sm:inline"></span>
+      <svg aria-hidden="true" viewBox="0 0 16 16" class="size-3 flex-none" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="m4 6 4 4 4-4"></path></svg>
+    </button>
+    <div data-account-pop hidden class="absolute top-full right-0 z-50 mt-1 grid w-40 rounded-md bg-ink-850 p-1 shadow-lg ring-1 ring-line">
+      <p data-account-name class="truncate border-b border-line px-2.5 pt-1 pb-2 text-xs font-semibold text-paper-50 sm:hidden"></p>
+      <a data-account-record class="rounded-sm px-2.5 py-1.5 text-sm text-paper-200 hover:bg-ink-800 hover:text-paper-50">{t.account.myRecord}</a>
+      <a data-account-logout href="/api/auth/logout" class="rounded-sm px-2.5 py-1.5 text-sm text-paper-200 hover:bg-ink-800 hover:text-paper-50">{t.account.logout}</a>
+    </div>
+  </div>
+</div>
+
+<script>
+  import '../scripts/account.ts';
+</script>

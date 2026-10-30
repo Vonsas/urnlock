@@ -1,0 +1,32 @@
+---
+/**
+ * 계수 아이콘 — '부운당', '마력', '무기 피해', '근접' 글자 대신 쓰는 게임 공식 아이콘. 글자 크기(1em)에 맞춰 줄 안에 놓인다.
+ * 부운 원본은 오른쪽이 투명 여백이라 그림 부분만 보이게 자른다.
+ */
+import { gameImage } from '../lib/images';
+import { BOON_ICON_URL, MELEE_ICON_URL, SPIRIT_ICON_URL, WEAPON_ICON_URL } from '../lib/icons';
+
+interface Props {
+  kind: 'boon' | 'spirit' | 'weapon' | 'melee';
+  /** 화면 낭독기와 마우스 툴팁용 이름 (예: '부운당', '마력') */
+  label: string;
+  class?: string;
+}
+const { kind, label, class: className } = Astro.props;
+const icon = {
+  boon: { url: BOON_ICON_URL, w: 79, h: 55, box: 'aspect-[46/55]' },
+  spirit: { url: SPIRIT_ICON_URL, w: 76, h: 53, box: 'aspect-[76/53]' },
+  weapon: { url: WEAPON_ICON_URL, w: 70, h: 54, box: 'aspect-[70/54]' },
+  melee: { url: MELEE_ICON_URL, w: 70, h: 54, box: 'aspect-[70/54]' },
+}[kind];
+const src = await gameImage(icon.url, icon.w, icon.h);
+---
+
+<span
+  role="img"
+  aria-label={label}
+  title={label}
+  class:list={['inline-block h-[1.05em] flex-none overflow-hidden align-[-0.15em]', icon.box, className]}
+>
+  {src ? <img src={src} alt="" class="h-full w-auto max-w-none" /> : <span>{label}</span>}
+</span>

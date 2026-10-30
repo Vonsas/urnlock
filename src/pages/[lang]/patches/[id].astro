@@ -1,0 +1,23 @@
+---
+/** 패치노트 한 편 — 주소는 적용일 (/patches/2026-09-16) */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PatchNoteView from '../../../components/PatchNoteView.astro';
+import { LOCALES, localePath, toLocale, useTranslations } from '../../../i18n';
+import { getHeroes, getItems, getPatchNotes } from '../../../data';
+import { fill } from '../../../lib/format';
+
+export async function getStaticPaths() {
+  const ids = (await getPatchNotes('en')).map((n) => n.id);
+  return LOCALES.flatMap((lang) => ids.map((id) => ({ params: { lang, id } })));
+}
+
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const [notes, heroes, items] = await Promise.all([getPatchNotes(lang), getHeroes(lang), getItems(lang)]);
+const note = notes.find((n) => n.id === Astro.params.id);
+if (!note) return Astro.redirect(localePath(lang, 'patches'));
+---
+
+<BaseLayout lang={lang} seoTitle={fill(t.seo.patch, { date: note.date.replaceAll('-', '.') })} title={`${t.nav.patches} ${note.date.replaceAll('-', '.')}`} description={note.title}>
+  <PatchNoteView lang={lang} note={note} notes={notes} heroes={heroes} items={items} />
+</BaseLayout>

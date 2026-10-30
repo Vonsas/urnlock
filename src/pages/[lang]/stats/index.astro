@@ -1,0 +1,29 @@
+---
+/**
+ * 통계(승률표) — 영웅별 원본 수치 (승률·숙련자·비숙련·픽률·판수). 티어는 싣지 않는다.
+ * 2026-10-03 티어 페이지의 탭에서 상단 메뉴 '통계' 로 뺐다 (사용자 요청). 예전 주소 /tiers/stats 는 astro.config 의 redirects 로 이리 온다.
+ */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHead from '../../../components/PageHead.astro';
+import TierControls from '../../../components/TierControls.astro';
+import { LOCALES, toLocale, useTranslations } from '../../../i18n';
+import { tierPageConfig } from '../../../lib/tier-page';
+
+export function getStaticPaths() {
+  return LOCALES.map((lang) => ({ params: { lang } }));
+}
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const configJson = await tierPageConfig(lang, 'stats');
+---
+
+<BaseLayout lang={lang} seoTitle={t.seo.stats} title={t.nav.stats} description={t.tiers.statsLede}>
+  <PageHead title={t.nav.stats} />
+  <TierControls lang={lang} active="stats" />
+  <div data-tier-view class="mt-4"></div>
+  <script type="application/json" id="tier-config" set:html={configJson} />
+</BaseLayout>
+
+<script>
+  import '../../../scripts/tiers.ts';
+</script>

@@ -1,0 +1,53 @@
+---
+/**
+ * `/` — 저장된 언어(localStorage)가 있으면 그 언어로, 없으면 기본 언어(한국어)로 보낸다.
+ * 정적 사이트라 서버 리다이렉트 대신 즉시 실행되는 인라인 스크립트를 쓴다.
+ */
+import { DEFAULT_LOCALE, LANG_STORAGE_KEY, LOCALES, localePath } from '../i18n';
+
+const fallback = localePath(DEFAULT_LOCALE);
+---
+
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="robots" content="noindex" />
+    {/* 네이버 서치어드바이저 소유 확인 (2026-10-06) — 네이버는 첫 주소(/)를 읽는다 */}
+    <meta name="naver-site-verification" content="5b5899804ef40924b0c2f0dfbbf651bdae55f129" />
+    <title>Urnlock</title>
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    {/* 구글 검색 결과 아이콘은 비트맵(48px 배수)을 쓴다 — tools/build-favicons.mjs */}
+    <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png" />
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <script is:inline define:vars={{ locales: LOCALES, fallback, key: LANG_STORAGE_KEY }}>
+      let target = fallback;
+      try {
+        const saved = localStorage.getItem(key);
+        if (saved && locales.includes(saved)) target = `/${saved}/`;
+      } catch {
+        /* 저장소 접근 불가 시 기본 언어 */
+      }
+      location.replace(target);
+    </script>
+    <noscript><meta http-equiv="refresh" content={`0; url=${fallback}`} /></noscript>
+    <style>
+      body {
+        margin: 0;
+        background: #0b181e;
+        color: #8aa2a1;
+        font: 14px/1.6 system-ui, sans-serif;
+        padding: 2rem 1rem;
+      }
+      a {
+        color: #9de5da;
+      }
+    </style>
+  </head>
+  <body>
+    <p>
+      {LOCALES.map((code) => <a href={localePath(code)} style="margin-right:1rem">{code.toUpperCase()}</a>)}
+    </p>
+  </body>
+</html>

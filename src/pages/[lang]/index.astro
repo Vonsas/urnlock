@@ -1,0 +1,87 @@
+---
+/**
+ * 첫 페이지 (2026-10-03, 사용자가 그림판으로 그려 준 구성) — 가운데 한 줄로: 사이트 이름 → 전적 검색 → 최신 메이저 패치 그림.
+ * 이름 · 검색은 화면 폭 전체의 밤 도시 장면(CityScene, 레이아웃 hero 슬롯) 하늘 위에 둔다 — 맨 앞 건물 색이 페이지 바탕으로 이어진다.
+ * 패치 그림은 잉크 얼룩 모양으로 잘라(.ink-blot) 뒤에 같은 그림을 흐리게 깐 넓은 얼룩(.ink-blot-wide) 위에 얹는다 — 네모 티를 없애려고.
+ * 제목·날짜·패치노트 링크는 그림 바로 아래 (그림 위에 겹치면 영웅 그림과 글자가 섞여 안 읽혀서 내렸다).
+ * 디자인 규칙의 '가운데 정렬 대형 히어로 금지' 는 마케팅식 문구 히어로를 막으려던 것 — 이 구성은 사용자가 직접 정했다 (OP.GG 첫 화면과 같은 꼴).
+ * 티어(S·A) 칸·영웅 그리드·새 빌드·승률 급변동은 뺐다 (정보가 넘쳐서). 그림은 data/patch-banners.ts 에서 허락한 것만
+ * (마이너 패치 그림엔 데드락 로고가 있어 못 씀). 헤더 검색창은 이 페이지에서만 숨긴다.
+ */
+import BaseLayout from '../../layouts/BaseLayout.astro';
+import SearchBox from '../../components/SearchBox.astro';
+import CityScene from '../../components/CityScene.astro';
+import Wordmark from '../../components/Wordmark.astro';
+import { LOCALES, localePath, toLocale, useTranslations } from '../../i18n';
+import { getPatchBanner, getPatchNotes, type PatchNote } from '../../data';
+import { gameImage } from '../../lib/images';
+
+export function getStaticPaths() {
+  return LOCALES.map((lang) => ({ params: { lang } }));
+}
+
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const [notes, banner] = await Promise.all([getPatchNotes(lang), getPatchBanner(lang)]);
+
+// 그림이 있는 메이저 패치, 없으면 가장 최근 패치를 글로만
+const feature: PatchNote | undefined = banner ?? notes[0];
+// 공지 그림 원본 1200×1021 — 자르지 않고 전체를 작게(세로 약 350px) 보이고, 뒤 양옆에 같은 그림을 흐리고 어둡게 깔아 2:1 로 넓힌다
+// (사용자: '그림을 작게 = 자르라는 게 아님', 원본만 / 흐린 배경 확장 두 안을 캡처로 비교해 확장 쪽 선택)
+const image = banner && (await gameImage(banner.image, 1200, 1021));
+const href = (n: PatchNote) => localePath(lang, n.id === notes[0]?.id ? 'patches' : `patches/${n.id}`);
+// 메이저 패치 뒤에 더 최근 패치가 나왔으면 한 줄로 알린다
+const newer = feature && notes[0] && notes[0].id !== feature.id ? notes[0] : undefined;
+---
+
+<BaseLayout lang={lang} hideSearch>
+  <!-- 밤 도시 장면 위에 사이트 이름 · 전적 검색 -->
+  <section slot="hero" class="relative isolate h-[34rem] sm:h-[42rem]">
+    <CityScene />
+    <div class="relative mx-auto flex max-w-page flex-col items-center px-4 pt-12 sm:px-6 sm:pt-16">
+      <h1 aria-label={`${t.site.name} — ${t.site.subtitle}`}>
+        <Wordmark class="text-[3.75rem] text-paper-50 sm:text-[5rem]" />
+      </h1>
+      <SearchBox lang={lang} size="lg" class="mt-8 w-full max-w-2xl sm:mt-10" />
+    </div>
+  </section>
+
+  <div class="flex flex-col items-center">
+    <!-- 최신 메이저 패치 — 가장자리가 배경으로 스며드는 그림 -->
+    {
+      feature && (
+        <section aria-labelledby="feature-title" class="mt-8 flex w-full max-w-[44rem] flex-col items-center sm:mt-10">
+          {image && (
+            <a href={href(feature)} tabindex="-1" aria-hidden="true" class="relative block aspect-[2/1] w-full overflow-hidden">
+              <span class="ink-blot-wide absolute inset-0 overflow-hidden"><img src={image} alt="" class="size-full scale-125 object-cover opacity-35 blur-2xl" /></span>
+              <img src={image} alt="" width="1200" height="1021" class="ink-blot relative mx-auto h-full w-auto" />
+            </a>
+          )}
+          <div class:list={['relative text-center', image && 'mt-1']}>
+            <p class="flex items-baseline justify-center gap-2 text-sm">
+              <span class="font-semibold text-brass-400">{banner ? t.home.majorPatch : t.home.latestPatch}</span>
+              <span class="text-xs text-paper-400 tabular-nums">{feature.date.replaceAll('-', '.')}</span>
+            </p>
+            <h2 id="feature-title" class="mt-1 text-2xl font-extrabold tracking-tight sm:text-3xl">
+              <a href={href(feature)} class="hover:text-brass-200">
+                {feature.title}
+              </a>
+            </h2>
+            <a href={href(feature)} class="mt-3 inline-block text-sm font-semibold text-brass-400 hover:text-brass-200">
+              {t.home.readNotes} →
+            </a>
+            {newer && (
+              <p class="mt-4 text-[0.8125rem]">
+                <a href={localePath(lang, 'patches')} class="group inline-flex items-baseline gap-2">
+                  <span class="text-paper-400">{t.home.newerPatch}</span>
+                  <span class="text-xs text-paper-400 tabular-nums">{newer.date.replaceAll('-', '.')}</span>
+                  <span class="text-paper-400 group-hover:text-paper-50">{newer.title}</span>
+                </a>
+              </p>
+            )}
+          </div>
+        </section>
+      )
+    }
+  </div>
+</BaseLayout>

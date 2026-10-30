@@ -1,0 +1,23 @@
+---
+/** 가이드 보기 — /ko/guides/view/?id=… (주소로 공유). 글은 브라우저가 받아 그린다 (scripts/guides.ts) */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import { LOCALES, toLocale, useTranslations } from '../../../i18n';
+import { guidesPageConfig } from '../../../lib/guides-page';
+
+export function getStaticPaths() {
+  return LOCALES.map((lang) => ({ params: { lang } }));
+}
+
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const configJson = await guidesPageConfig(lang, 'view');
+---
+
+<BaseLayout lang={lang} title={t.nav.guides} description={t.home.sectionDesc.guides}>
+  <div data-guides-view class="pt-8"></div>
+  <script type="application/json" id="guides-config" set:html={configJson} />
+</BaseLayout>
+
+<script>
+  import '../../../scripts/guides.ts';
+</script>

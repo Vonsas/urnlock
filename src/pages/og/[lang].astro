@@ -1,0 +1,45 @@
+---
+/**
+ * 링크 미리보기(Open Graph) 카드 원본 — 1200×630. 디시·디스코드·카톡에 주소를 붙이면 뜨는 그림 (2026-10-05).
+ * 이 페이지를 headless Chrome 으로 찍어 public/og/{lang}.png 로 저장한다: `node tools/build-og.mjs` (개발 서버가 떠 있어야 함).
+ * 사이트 안에서는 링크하지 않고 검색엔진에도 내지 않는다 (noindex).
+ */
+import 'pretendard/dist/web/variable/pretendardvariable-dynamic-subset.css';
+import '../../styles/global.css';
+import CityScene from '../../components/CityScene.astro';
+import Wordmark from '../../components/Wordmark.astro';
+import { LOCALES, LOCALE_META, toLocale, useTranslations } from '../../i18n';
+
+export function getStaticPaths() {
+  return LOCALES.map((lang) => ({ params: { lang } }));
+}
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+---
+
+<!doctype html>
+<html lang={LOCALE_META[lang].htmlLang}>
+  <head>
+    <meta charset="utf-8" />
+    <meta name="robots" content="noindex" />
+    <title>{t.site.name}</title>
+    <style>
+      html,
+      body {
+        margin: 0;
+        width: 1200px;
+        height: 630px;
+        overflow: hidden;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="relative isolate h-[630px] w-[1200px] overflow-hidden">
+      <CityScene />
+      <div class="relative flex flex-col items-center pt-24">
+        <Wordmark rough class="text-[8.5rem] text-paper-50" />
+        <p class="mt-8 text-[2.125rem] font-bold tracking-tight text-paper-50">{t.site.ogTagline}</p>
+      </div>
+    </div>
+  </body>
+</html>

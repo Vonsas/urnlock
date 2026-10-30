@@ -1,0 +1,42 @@
+---
+/**
+ * Urnlock 워드마크 (2026-10-03) — 영웅 이름 로고처럼 손으로 다듬은 글자: Abril Fatface, LOCK 의 O 자리에 항아리 심볼.
+ * 뒤틀기는 사용자가 고른 '1단계' (글자마다 ±2–4° · 위아래 조금 · U 와 k 만 크게).
+ * 글자는 글꼴이 아니라 미리 뽑은 SVG 도형(src/lib/wordmark.ts, tools/build-wordmark.mjs 로 생성)이다 —
+ * CSS 로 글자를 기울이면 윈도우 Chrome 에서 작은 크기일 때 색 번짐·계단이 생겨서 바꿨다. 로고용 웹폰트도 받지 않는다.
+ * 크기는 바깥의 font-size(text-[…]) 를 따른다 (1em 글자 기준). 읽히는 이름은 바깥 요소의 aria-label 로.
+ * rough = 가장자리를 붓 자국처럼 거칠게 — 쓰지 않는다 (2026-10-08 사용자: SVG 필터 잡음이 픽셀처럼 깨져 보임, 확대해도 안 깨지는 순수 벡터로).
+ */
+import { WORDMARK } from '../lib/wordmark';
+import { URN_PATH } from '../lib/urn-path';
+
+interface Props {
+  class?: string;
+  rough?: boolean;
+}
+const { class: className, rough = false } = Astro.props;
+const filterId = 'wordmark-rough';
+const { urn } = WORDMARK;
+---
+
+<svg
+  aria-hidden="true"
+  viewBox={WORDMARK.viewBox}
+  class:list={['inline-block shrink-0 align-middle', className]}
+  style={`height:${WORDMARK.heightEm}em;width:${WORDMARK.widthEm}em`}
+>
+  {
+    rough && (
+      <filter id={filterId} x="-5%" y="-10%" width="110%" height="120%">
+        <feTurbulence type="fractalNoise" baseFrequency="0.9" numOctaves="2" seed="3" result="n" />
+        <feDisplacementMap in="SourceGraphic" in2="n" scale="1.6" />
+      </filter>
+    )
+  }
+  <g filter={rough ? `url(#${filterId})` : undefined}>
+    <path d={WORDMARK.letters} fill="currentColor"></path>
+    <svg x={urn.x} y={urn.y} width={urn.w} height={urn.h} viewBox="0 0 100 140" class="text-brass-400">
+      <path fill-rule="evenodd" fill="currentColor" d={URN_PATH}></path>
+    </svg>
+  </g>
+</svg>

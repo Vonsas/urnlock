@@ -1,0 +1,92 @@
+---
+/**
+ * 영웅 상세 '빌드' 탭 — 스킬 순서(갈림길마다 다수 선택) + 시기별 핵심 아이템(구매율·평균 구매 시각).
+ * 기준은 티어와 같다 (전령사+ 랭크 · 최근 2주). 아이템 승률은 경기 길이에 끌려가 싣지 않는다.
+ */
+import Panel from './Panel.astro';
+import ItemIcon from './ItemIcon.astro';
+import SkillOrder from './SkillOrder.astro';
+import type { Ability, HeroInsights, Item } from '../data';
+import { useTranslations, type Locale } from '../i18n';
+import { fill, formatNumber } from '../lib/format';
+
+interface Props {
+  lang: Locale;
+  insights: HeroInsights;
+  abilities: Ability[];
+  items: Item[];
+}
+const { lang, insights, abilities, items } = Astro.props;
+const t = useTranslations(lang);
+
+// 스킬 순서 — 능력 id 가 모두 이 영웅 능력과 맞을 때만 (SkillOrder 가 다시 확인한다)
+const path = insights.abilityOrder;
+const orderOk = path.length >= 4 && path.every((id) => abilities.some((a) => a.id === id));
+
+// 핵심 아이템 — 시기마다 구매율 상위 6개를 구매 시각 순으로
+const itemById = new Map(items.filter((i) => i.id !== undefined).map((i) => [i.id!, i]));
+const PHASES = [
+  { key: 'early', to: 600 },
+  { key: 'mid', to: 1200 },
+  { key: 'late', to: Infinity },
+] as const;
+const picks = insights.items.filter((p) => itemById.has(p.itemId));
+const phases = PHASES.map((ph, i) => {
+  const lo = i ? PHASES[i - 1].to : 0;
+  const rows = picks
+    .filter((p) => p.buyTime >= lo && p.buyTime < ph.to)
+    .sort((a, b) => b.buyRate - a.buyRate)
+    .slice(0, 6)
+    .sort((a, b) => a.buyTime - b.buyTime);
+  return { key: ph.key, rows };
+}).filter((ph) => ph.rows.length);
+const clock = (s: number) => {
+  const sec = Math.round(s);
+  return `${Math.floor(sec / 60)}:${String(sec % 60).padStart(2, '0')}`;
+};
+---
+
+<div class="grid grid-cols-[minmax(0,1fr)] gap-4">
+  {
+    orderOk && (
+      <Panel title={t.heroes.skillOrderTitle} bodyClass="px-4 pb-4">
+        <SkillOrder lang={lang} abilities={abilities} order={path} note={fill(t.heroes.skillOrderNote, { n: formatNumber(lang, insights.abilityOrderMatches) })} />
+      </Panel>
+    )
+  }
+
+  {
+    phases.length > 0 && (
+      <Panel title={t.heroes.itemsTitle} bodyClass="px-4 pb-4">
+        <div class="grid gap-x-6 gap-y-4 md:grid-cols-3">
+          {phases.map((ph) => (
+            <section>
+              <h3 class="pb-2 text-xs font-semibold text-paper-400">{t.heroes.phase[ph.key]}</h3>
+              <ol class="grid gap-1.5">
+                {ph.rows.map((p) => {
+                  const item = itemById.get(p.itemId)!;
+                  return (
+                    <li class="flex items-center gap-3 rounded-md bg-ink-850 p-2">
+                      <ItemIcon slug={item.slug} category={item.category} image={item.image} class="size-10" />
+                      <span class="min-w-0 flex-1">
+                        <span class="block truncate font-medium">{item.name}</span>
+                        <span class="block text-xs text-paper-500 tabular-nums">
+                          {fill(t.heroes.buyRate, { n: formatNumber(lang, Math.round(p.buyRate)) })} · {clock(p.buyTime)}
+                        </span>
+                      </span>
+                    </li>
+                  );
+                })}
+              </ol>
+            </section>
+          ))}
+        </div>
+        <p class="mt-3 text-xs text-paper-500">
+          {t.heroes.basisUpperShort} · {t.heroes.itemsNote}
+        </p>
+      </Panel>
+    )
+  }
+
+  {!orderOk && phases.length === 0 && <p class="text-paper-400">{t.heroes.noInsights}</p>}
+</div>

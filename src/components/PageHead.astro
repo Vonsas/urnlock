@@ -1,0 +1,21 @@
+---
+/** 페이지 제목 줄 — 제목, 개수, 한 줄 설명. 오른쪽 슬롯은 보조 정보 */
+interface Props {
+  title: string;
+  count?: string;
+  description?: string;
+}
+const { title, count, description } = Astro.props;
+---
+
+{/* 제목 아래 설명 문구를 뺀 뒤(2026-10-06) 제목과 첫 도구 줄 사이가 떠 보여 pb-6 → pb-4, 바로 아래 요소는 위 여백 없이 붙인다 */}
+<div class="flex flex-wrap items-end gap-x-6 gap-y-2 pt-8 pb-4">
+  <div class="min-w-0 flex-1">
+    <h1 class="flex items-baseline gap-3 text-3xl leading-tight font-extrabold md:text-4xl">
+      {title}
+      {count && <span class="text-base font-medium text-paper-500 tabular-nums">{count}</span>}
+    </h1>
+    {description && <p class="mt-2 max-w-3xl text-paper-400">{description}</p>}
+  </div>
+  <slot />
+</div>

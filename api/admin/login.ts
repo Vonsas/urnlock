@@ -1,0 +1,37 @@
+/**
+ * 관리자 로그인 — 환경 변수 ADMIN_PASSWORD 와 같으면 12시간짜리 관리자 쿠키 (관리 요청 경로에만 실려 간다).
+ * 틀린 시도는 IP 당 15분에 5번까지 (비밀번호 맞히기 막기).
+ */
+import { clientIp, json, sameOrigin, storeDown } from '../_lib/http.js';
+import { bump, redis } from '../_lib/redis.js';
+import { adminCookie, clearAdminCookie, safeEqual } from '../_lib/session.js';
+import { limited } from '../_lib/limit.js';
+
+async function handlePost(request: Request): Promise<Response> {
+  const busy = limited(request, 'auth');
+  if (busy) return busy;
+  if (!sameOrigin(request)) return json({ ok: false }, 403);
+  const expected = process.env.ADMIN_PASSWORD ?? '';
+  if (expected.length < 12) return json({ ok: false, error: 'not-configured' }, 500);
+  const key = `rate:login:${clientIp(request)}`;
+  // 먼저 세고 판단한다 — 읽고 나서 틀릴 때만 세면 동시에 여러 번 보내 5번 제한을 넘길 수 있었다 (2026-10-14 점검)
+  if ((await bump(key, 900)) > 5) return json({ ok: false, error: 'rate' }, 429);
+  const { password } = (await request.json().catch(() => ({}))) as { password?: unknown };
+  if (typeof password !== 'string' || !(await safeEqual(password, expected))) return json({ ok: false, error: 'wrong' }, 401);
+  await redis('DEL', key);
+  return json({ ok: true }, 200, { 'set-cookie': await adminCookie() });
+}
+
+/** 관리자 로그아웃 */
+export function DELETE(): Response {
+  return json({ ok: true }, 200, { 'set-cookie': clearAdminCookie() });
+}
+
+export async function POST(request: Request): Promise<Response> {
+  try {
+    return await handlePost(request);
+  } catch (e) {
+    // 저장소에 닿지 못하면 503 readonly (#21) — 예전엔 처리 안 된 오류로 Vercel 기본 500 이었다
+    return storeDown(e) ?? json({ ok: false, error: 'server' }, 500);
+  }
+}

@@ -1,0 +1,257 @@
+---
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import Panel from '../../../components/Panel.astro';
+import HeroPortrait from '../../../components/HeroPortrait.astro';
+import HeroPatchBox from '../../../components/HeroPatchBox.astro';
+import HeroMetrics from '../../../components/HeroMetrics.astro';
+import BuildTab from '../../../components/BuildTab.astro';
+import { TIPS_ENABLED } from '../../../lib/tips';
+import GuideTab from '../../../components/GuideTab.astro';
+import HeroAbilities from '../../../components/HeroAbilities.astro';
+import StatGroup, { type StatLine } from '../../../components/StatGroup.astro';
+import { LOCALES, localePath, toLocale, useTranslations } from '../../../i18n';
+import { getHero, getHeroInsights, getHeroProfile, getHeroSlugs, getItems, getHeroBuilds, getHeroCharts, getPatchNotes, getRanks, getHeroStatRanks, type HeroStatKey, type ScalingStat } from '../../../data';
+import { fill, formatNumber } from '../../../lib/format';
+import { gameSvgSized } from '../../../lib/images';
+
+export async function getStaticPaths() {
+  const slugs = await getHeroSlugs();
+  return LOCALES.flatMap((lang) => slugs.map((slug) => ({ params: { lang, slug } })));
+}
+
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const hero = await getHero(Astro.params.slug!, lang);
+if (!hero) return Astro.redirect(localePath(lang, 'heroes'));
+const d = hero.detail;
+
+const num = (n: number) => formatNumber(lang, n);
+const boons = d?.maxBoons ?? 0;
+/** 부운으로 오르는 수치는 최대 레벨 값도 계산 (base + perBoon × 부운 수) */
+// 영웅 간 순위 (값 옆 작은 'n/39')
+const statRanks = await getHeroStatRanks(hero.slug);
+const ranked = (key: HeroStatKey) => ({ rank: statRanks[key]?.base, maxRank: statRanks[key]?.max });
+const line = (label: string, s: ScalingStat, unit = '', key?: HeroStatKey): StatLine => ({
+  ...(key && ranked(key)),
+  label,
+  value: `${num(s.base)}${unit}`,
+  perBoon: s.perBoon ? `+${num(s.perBoon)}` : undefined,
+  // 부운당 값이 소수 둘째 자리로 반올림돼 있어 최대값은 첫째 자리까지만
+  max: s.perBoon && boons ? `${formatNumber(lang, s.base + s.perBoon * boons, 1)}${unit}` : undefined,
+});
+
+// 게임 UI 와 같은 묶음: 무기 / 활력 / 영혼. 무기 이름·유형은 무기 묶음 제목 옆에
+const weaponName = d && [d.weapon.name, ...d.weapon.traits].join(' · ');
+// 초당 피해는 탄환 피해에 비례해 오른다
+const bullet = d?.weapon.bulletDamage;
+const maxDps =
+  d && bullet?.perBoon && bullet.base && boons ? Math.round((d.weapon.dps * (bullet.base + bullet.perBoon * boons)) / bullet.base) : undefined;
+const groups = d && {
+  weapon: [
+    { label: t.heroes.weaponStat.dps, value: num(d.weapon.dps), max: maxDps ? num(maxDps) : undefined, ...ranked('dps') },
+    line(t.heroes.weaponStat.bulletDamage, d.weapon.bulletDamage, '', 'bulletDamage'),
+    { label: t.heroes.weaponStat.pellets, value: num(d.weapon.pellets), ...ranked('pellets') },
+    { label: t.heroes.weaponStat.ammo, value: num(d.weapon.ammo), ...ranked('ammo') },
+    { label: t.heroes.weaponStat.fireRate, value: num(d.weapon.fireRate), ...ranked('fireRate') },
+    { label: t.heroes.weaponStat.reloadTime, value: `${num(d.weapon.reloadTime)}s`, ...ranked('reloadTime') },
+    { label: t.heroes.weaponStat.bulletVelocity, value: `${num(d.weapon.bulletVelocity)}m/s`, ...ranked('bulletVelocity') },
+    { label: t.heroes.weaponStat.falloffRange, value: `${num(d.weapon.falloffRange[0])}–${num(d.weapon.falloffRange[1])}m` },
+    line(t.heroes.stat.lightMelee, d.stats.lightMelee, '', 'lightMelee'),
+    line(t.heroes.stat.heavyMelee, d.stats.heavyMelee, '', 'heavyMelee'),
+  ],
+  vitality: [
+    line(t.heroes.stat.health, d.stats.health, '', 'health'),
+    line(t.heroes.stat.healthRegen, d.stats.healthRegen, '', 'healthRegen'),
+    line(t.heroes.stat.bulletResist, d.stats.bulletResist, '%', 'bulletResist'),
+    line(t.heroes.stat.spiritResist, d.stats.spiritResist, '%', 'spiritResist'),
+    line(t.heroes.stat.moveSpeed, d.stats.moveSpeed, 'm/s', 'moveSpeed'),
+    line(t.heroes.stat.sprintSpeed, d.stats.sprintSpeed, 'm/s', 'sprintSpeed'),
+    line(t.heroes.stat.stamina, d.stats.stamina, '', 'stamina'),
+  ],
+  spirit: [line(t.heroes.stat.spiritPower, d.stats.spiritPower, '', 'spiritPower')],
+};
+
+const [profile, insights, items, builds, charts, notes, ranks] = await Promise.all([
+  getHeroProfile(hero.id),
+  getHeroInsights(hero.id),
+  getItems(lang),
+  getHeroBuilds(hero.slug),
+  getHeroCharts(hero.id),
+  getPatchNotes(lang),
+  getRanks(lang),
+]);
+// 승률 추이의 패치 표시 — 패치 적용일
+const patchMarks = notes.map((n) => ({ day: Date.parse(`${n.date}T00:00:00Z`) / 1000, label: t.heroes.patchLabel }));
+const hasBuild = Boolean(insights || d?.popular || builds.pro.length || builds.top.length);
+// 능력은 탭 대신 머리의 아이콘(HeroAbilities). 처음 열리는 건 지표 (2026-10-02 사용자 요청)
+const tabs = [
+  ...(profile || insights || charts ? [{ id: 'metrics', label: t.heroes.tabMetrics }] : []),
+  ...(hasBuild ? [{ id: 'build', label: t.heroes.tabBuild }] : []),
+  // 가이드 = 유저 팁 (스팀 인증 · 운영자 승인, 2026-10-06)
+  ...(TIPS_ENABLED && hero.id !== undefined ? [{ id: 'guide', label: t.guide.tab }] : []),
+  { id: 'stats', label: t.heroes.baseStats },
+];
+const firstTab = tabs[0].id;
+const nameLogo = await gameSvgSized(hero.image?.name);
+// 이름 로고는 영웅마다 비율이 크게 다르다 (그레이브즈 4.1:1 한 줄 · 랫 킹 1.8:1 두 줄). 높이를 같게 하면 두 줄 로고가 작아 보여서
+// 차지하는 면적이 같도록 높이를 정한다: 높이 = √(면적 ÷ 비율). 면적은 4:1 로고가 높이 3.5rem 일 때 기준, 너무 커지지 않게 5.25rem 까지 (2026-10-06 사용자 지적)
+const logoRatio = nameLogo ? nameLogo.width / nameLogo.height : 4;
+const logoHeight = Math.min(5.25, Math.sqrt((3.5 * 3.5 * 4) / logoRatio));
+const statColumns = { base: t.heroes.baseCol, perBoon: t.heroes.perBoon, max: t.heroes.maxLevel };
+---
+
+<BaseLayout lang={lang} title={hero.name} seoTitle={fill(t.seo.hero, { hero: hero.name })} description={fill(t.seo.heroDesc, { hero: hero.name })}>
+  <!--
+    영웅 머리 — 한 패널 안에 [초상 | 이름 로고 · 능력 아이콘 · 소개] ‖ 이 영웅의 최근 패치 변경 (육각형은 지표 탭으로).
+    왼쪽 묶음과 육각형 높이를 비슷하게(약 14rem) 맞추고, 넓은 화면에선 세로 괘선으로 나눈다 (2026-10-02 사용자 요청: 균형, 경로 표시 없음)
+  -->
+  <header class="mt-6 grid gap-6 rounded-lg bg-ink-900 p-4 ring-1 ring-line ring-inset sm:p-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-stretch lg:gap-8">
+    <div class="min-w-0">
+      <div class="flex items-center gap-4 sm:gap-6">
+        <HeroPortrait slug={hero.slug} name={hero.name} image={hero.image} size="lg" class="aspect-[280/380] w-24 flex-none rounded-lg ring-1 ring-line ring-inset sm:w-36 lg:w-44" />
+        <div class="flex min-w-0 flex-1 flex-col gap-3 sm:gap-4">
+          {
+            nameLogo ? (
+              <h1>
+                {/* 게임이 디자인한 이름 로고 (영어). 이름 글자는 읽기 도구·검색용으로 alt 에 */}
+                <img
+                  src={nameLogo.src}
+                  alt={hero.name}
+                  style={`--logo-h:${logoHeight.toFixed(2)}rem`}
+                  class="h-[calc(var(--logo-h)*0.64)] w-auto max-w-full object-contain object-left sm:h-(--logo-h)"
+                />
+              </h1>
+            ) : (
+              <h1 class="text-3xl leading-tight font-extrabold tracking-tight sm:text-5xl">{hero.name}</h1>
+            )
+          }
+          {d && <HeroAbilities lang={lang} abilities={d.abilities} />}
+          {/* 영웅 소개는 두지 않는다 — API 에 없는 영웅이 있어 있다 없다 해서 (2026-10-25 사용자) */}
+        </div>
+      </div>
+    </div>
+    <div class="border-line lg:h-full lg:w-[26rem] lg:border-l lg:pl-8">
+      <HeroPatchBox lang={lang} heroSlug={hero.slug} notes={notes} />
+    </div>
+  </header>
+
+  {
+    d && groups ? (
+      <div data-tabs class="mt-6">
+        <!-- 탭: 지표 / 빌드 / 기본 스탯 을 하나씩 보여준다. JS 가 없으면 둘 다 보이고 탭은 앵커로 동작 -->
+        {/* 고정 탭 줄 — 화면 전체 배경(밤 도시) 위에서 띠처럼 보이지 않게 다른 박스와 같은 면으로 (2026-10-04) */}
+        <nav aria-label={t.heroes.overview} class="sticky top-0 z-20 -mx-4 border-b border-line bg-ink-900 px-4 sm:mx-0 sm:rounded-t-lg sm:px-5">
+          <div role="tablist" class="flex gap-7 text-base font-semibold">
+            {tabs.map((tab, i) => (
+              <a
+                role="tab"
+                id={`tab-${tab.id}`}
+                href={`#${tab.id}`}
+                data-tab={tab.id}
+                aria-controls={tab.id}
+                aria-selected={i === 0 ? 'true' : 'false'}
+                class="-mb-px block border-b-2 border-transparent py-3.5 text-paper-400 transition-colors duration-150 hover:text-paper-50 aria-selected:border-brass-400 aria-selected:text-paper-50"
+              >
+                {tab.label}
+              </a>
+            ))}
+          </div>
+        </nav>
+
+        <section id="stats" role="tabpanel" aria-labelledby="tab-stats" data-tab-panel class="mt-6 scroll-mt-16">
+          <div class="grid items-start gap-4 lg:grid-cols-2">
+            <StatGroup title={t.items.categories.weapon} subtitle={weaponName} category="weapon" lines={groups.weapon} columns={statColumns} />
+            <div class="grid gap-4">
+              <StatGroup title={t.items.categories.vitality} category="vitality" lines={groups.vitality} columns={statColumns} />
+              <StatGroup title={t.items.categories.spirit} category="spirit" lines={groups.spirit} columns={statColumns} />
+            </div>
+          </div>
+          {boons > 0 && <p class="mt-3 text-xs text-paper-400">{fill(t.heroes.maxNote, { n: boons })} {t.heroes.statRankNote}</p>}
+        </section>
+
+        {(profile || insights || charts) && (
+          <section id="metrics" role="tabpanel" aria-labelledby="tab-metrics" data-tab-panel class="mt-6 scroll-mt-16">
+            <HeroMetrics lang={lang} heroName={hero.name} profile={profile} insights={insights} charts={charts} ranks={ranks} patches={patchMarks} />
+          </section>
+        )}
+
+        {hasBuild && (
+          <section id="build" role="tabpanel" aria-labelledby="tab-build" data-tab-panel class="mt-6 grid scroll-mt-16 grid-cols-[minmax(0,1fr)] gap-4">
+            <BuildTab
+              lang={lang}
+              items={items}
+              abilities={d.abilities}
+              popular={d.popular}
+              pro={builds.pro}
+              top={builds.top}
+              insights={insights}
+              patchFrom={builds.patchFrom}
+              ranks={ranks}
+            />
+          </section>
+        )}
+        {TIPS_ENABLED && hero.id !== undefined && (
+          <section id="guide" role="tabpanel" aria-labelledby="tab-guide" data-tab-panel class="mt-6 scroll-mt-16">
+            <GuideTab lang={lang} heroId={hero.id} heroName={hero.name} heroSlug={hero.slug} ranks={ranks} />
+          </section>
+        )}
+        {/* 그려지기 전에 첫 탭만 남긴다 (깜빡임 방지). JS 가 없으면 두 탭 모두 보인다 */}
+        <script is:inline define:vars={{ firstTab }}>
+          (function () {
+            var hash = location.hash.slice(1);
+            var open = document.getElementById('tab-' + hash) ? hash : firstTab;
+            document.querySelectorAll('[data-tab-panel]').forEach(function (p) {
+              if (p.id !== open) p.setAttribute('data-hidden', '');
+            });
+          })();
+        </script>
+      </div>
+    ) : (
+      <Panel id="pending" title={t.heroes.abilities} class="mt-6" bodyClass="px-4 pt-2 pb-6">
+        <p class="text-sm font-semibold text-copper-400">{t.heroes.detailPending}</p>
+        <p class="mt-2 max-w-xl text-paper-200">{t.heroes.detailPendingBody}</p>
+        <ol class="mt-5 grid max-w-xl grid-cols-4 gap-2" aria-hidden="true">
+          {[1, 2, 3, 4].map((n) => (
+            <li class="grid aspect-square place-items-center rounded-md bg-ink-850 text-xl font-bold text-ink-600">
+              {n}
+            </li>
+          ))}
+        </ol>
+      </Panel>
+    )
+  }
+</BaseLayout>
+
+<script>
+  // 탭 전환 — 주소의 #abilities / #stats / #metrics / #build 로 바로 열 수 있다
+  const root = document.querySelector<HTMLElement>('[data-tabs]');
+  if (root) {
+    // data-tab 이 붙은 영웅 탭만 (빌드 탭 안의 빌드 고르기 버튼도 role="tab" 이라 섞이면 안 된다)
+    const tabs = [...root.querySelectorAll<HTMLAnchorElement>('[role="tab"][data-tab]')];
+    const panels = [...root.querySelectorAll<HTMLElement>('[data-tab-panel]')];
+    const select = (id: string, focus = false) => {
+      tabs.forEach((tab) => {
+        const on = tab.dataset.tab === id;
+        tab.setAttribute('aria-selected', String(on));
+        tab.tabIndex = on ? 0 : -1;
+        if (on && focus) tab.focus();
+      });
+      panels.forEach((p) => p.toggleAttribute('data-hidden', p.id !== id));
+    };
+    tabs.forEach((tab, i) => {
+      tab.addEventListener('click', (e) => {
+        e.preventDefault();
+        select(tab.dataset.tab!);
+        history.replaceState(null, '', `#${tab.dataset.tab}`);
+      });
+      tab.addEventListener('keydown', (e) => {
+        if (e.key !== 'ArrowLeft' && e.key !== 'ArrowRight') return;
+        const next = tabs[(i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length];
+        select(next.dataset.tab!, true);
+        history.replaceState(null, '', `#${next.dataset.tab}`);
+      });
+    });
+    const initial = location.hash.slice(1);
+    select(tabs.some((t) => t.dataset.tab === initial) ? initial : tabs[0].dataset.tab!);
+  }
+</script>

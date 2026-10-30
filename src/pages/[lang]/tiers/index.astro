@@ -1,0 +1,30 @@
+---
+/** 티어 — DLDB 자체 점수로 매긴 S~D 보드. 수치는 승률표 탭에 */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHead from '../../../components/PageHead.astro';
+import TierControls from '../../../components/TierControls.astro';
+import { LOCALES, toLocale, useTranslations } from '../../../i18n';
+import { tierPageConfig } from '../../../lib/tier-page';
+
+export function getStaticPaths() {
+  return LOCALES.map((lang) => ({ params: { lang } }));
+}
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const configJson = await tierPageConfig(lang, 'tier');
+---
+
+<BaseLayout lang={lang} seoTitle={t.seo.tiers} title={t.tiers.title} description={t.tiers.lede}>
+  <PageHead title={t.tiers.title} />
+  <TierControls lang={lang} active="tier" />
+
+  {/* 태그 설명 줄은 뺐다 (2026-10-09 사용자) — 태그 이름이 뜻을 말하고, 마우스를 올리면 같은 설명 */}
+  <div data-tier-view class="mt-4"></div>
+  <p class="mt-6 max-w-3xl text-xs text-paper-400">{t.tiers.method}</p>
+
+  <script type="application/json" id="tier-config" set:html={configJson} />
+</BaseLayout>
+
+<script>
+  import '../../../scripts/tiers.ts';
+</script>

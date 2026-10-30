@@ -1,0 +1,66 @@
+---
+/**
+ * 빌드 성적 줄 (2026-10-22 사용자 요청, 2026-10-24 모양 변경) — 승률 하나만 크게 + 판수 작게, 오른쪽에 작성자 랭킹 · 사용률 작은 글씨.
+ * 승률 · 판수 · 사용률 = 최근 14일 전체 랭크, 플레이어가 매치 시작 때 고른 빌드 (data/api/builds.ts loadBuildPerf).
+ * 100판 미만이면 셋 다 싣지 않는다 ('—' 도 두지 않음). 작성자 = 공식 순위표 순위('유럽 2위') 또는 지금 랭크 휘장 (loadStandings).
+ * 빌드 페이지 카드(scripts/builds.ts statLine)도 같은 모양 · 기준.
+ */
+import type { AuthorStanding, BuildPerf, Rank } from '../data';
+import { useTranslations, type Locale } from '../i18n';
+import { fill, formatNumber, formatPercent } from '../lib/format';
+import { gameImage } from '../lib/images';
+
+interface Props {
+  lang: Locale;
+  perf?: BuildPerf;
+  author?: AuthorStanding;
+  ranks: Rank[];
+}
+const { lang, perf, author, ranks } = Astro.props;
+const t = useTranslations(lang);
+/** 승률을 보여 줄 최소 판수 */
+const MIN_GAMES = 100;
+const regionName = { Asia: t.players.regionAsia, Europe: t.players.regionEurope, NAmerica: t.players.regionNAmerica, SAmerica: t.players.regionSAmerica, Oceania: t.players.regionOceania };
+const tier = author?.badge ? Math.floor(author.badge / 10) : undefined;
+const sub = author?.badge ? author.badge % 10 : undefined;
+const rank = tier !== undefined ? ranks.find((r) => r.tier === tier) : undefined;
+const rankIcon = rank ? await gameImage(rank.image, 40, 40) : undefined;
+const shown = perf && perf.matches >= MIN_GAMES ? perf : undefined;
+const wr = shown ? (shown.wins / shown.matches) * 100 : 0;
+// 승률 글자색 — 통계 랭크별 보기와 같은 기준 (51% 이상 초록 · 49% 이하 빨강)
+const winTone = wr >= 51 ? 'text-buff' : wr <= 49 ? 'text-nerf' : 'text-paper-50';
+const standLabel =
+  author?.rank && author.region
+    ? fill(t.heroes.buildRankPos, { region: regionName[author.region], n: formatNumber(lang, author.rank) })
+    : rank
+      ? sub
+        ? `${rank.name} ${sub}`
+        : rank.name
+      : undefined;
+---
+
+{
+  (shown || standLabel) && (
+    <div class="mt-3 flex min-h-7 items-end gap-x-3 gap-y-1">
+      {shown && (
+        <p class="flex items-baseline gap-2 tabular-nums">
+          <span class={`text-2xl leading-7 font-extrabold tracking-tight ${winTone}`}>{formatPercent(lang, wr)}</span>
+          <span class="text-sm text-paper-400">{fill(t.heroes.buildGamesN, { n: formatNumber(lang, shown.matches) })}</span>
+        </p>
+      )}
+      <div class="ml-auto flex min-w-0 flex-col items-end gap-0.5 text-xs text-paper-400 tabular-nums">
+        {standLabel && (
+          <span class={`flex items-center gap-1 font-semibold ${author?.rank ? 'text-tier-a' : 'text-paper-200'}`}>
+            {rankIcon && <img src={rankIcon} alt="" width="16" height="16" class="size-4 flex-none object-contain" loading="lazy" />}
+            <span>{standLabel}</span>
+          </span>
+        )}
+        {shown && (
+          <span>
+            {t.heroes.buildShare} {shown.share < 0.1 ? `<${formatPercent(lang, 0.1)}` : formatPercent(lang, shown.share)}
+          </span>
+        )}
+      </div>
+    </div>
+  )
+}
