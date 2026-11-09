@@ -415,10 +415,11 @@ export interface PatchSummary {
 
 /** 패치노트 본문 조각 — 원문(영어) 문장 그대로, 영웅·아이템 이름만 현재 언어 */
 export type PatchBlock =
-  | { type: 'p'; text: string; orig?: string }
-  /** 공지 속 소제목 (원문의 대문자 줄 'STANDARD MODE') */
-  | { type: 'h'; text: string; orig?: string }
-  | { type: 'li'; text: string; orig?: string }
+  /** rule = 공지에서 원문(Steam)의 가로줄이 이 조각 바로 앞에 있다 */
+  | { type: 'p'; text: string; orig?: string; rule?: boolean }
+  /** 공지 속 소제목 (원문의 대문자 줄 'STANDARD MODE' · 줄 전체가 굵은 글씨 'Seasonal Rank Reset') */
+  | { type: 'h'; text: string; orig?: string; rule?: boolean }
+  | { type: 'li'; text: string; orig?: string; rule?: boolean }
   /** 영웅·아이템별 묶음. slug 가 없으면 사이트에 없는 대상(원문 이름) */
   | {
       type: 'group';
@@ -433,6 +434,8 @@ export type PatchBlock =
 export interface PatchAbility {
   slot: 1 | 2 | 3 | 4;
   name: string;
+  /** 영어 이름 — 원문 · 번역 안 된 줄에서 능력 이름을 뺄 때 */
+  enName?: string;
   image?: string;
 }
 
@@ -476,8 +479,8 @@ export interface GameBuild {
   version: number;
   /** 마지막 수정 (unix 초) */
   updatedAt: number;
-  /** 작성자가 나눈 아이템 묶음 ('Early Game' …, 작성자가 쓴 이름 그대로) */
-  groups: Array<{ name: string; items: Array<{ itemId: number; note?: string }> }>;
+  /** 작성자가 나눈 아이템 묶음 ('Early Game' …, 작성자가 쓴 이름 그대로) · desc = 묶음 설명 · note = 아이템 설명 (작성자 글 그대로, 번역 없음) */
+  groups: Array<{ name: string; desc?: string; items: Array<{ itemId: number; note?: string }> }>;
   /** 작성자가 정한 능력 포인트 순서 (능력 id, 처음 나오면 해금 · 이후 강화) */
   abilityOrder: number[];
 }
@@ -512,7 +515,7 @@ export interface AuthorStanding {
   badge?: number;
 }
 
-/** 초월자+ 가 실제 매치에서 많이 고른 게임 빌드 1–3위 (2026-10-03 다시 살림 — 오래된 빌드를 뺀 뒤 많이 쓴 순) */
+/** 예지자+ 가 실제 매치에서 많이 고른 게임 빌드 1–5위 (100판 이상, 오래된 빌드를 뺀 뒤 많이 쓴 순) */
 export interface TopBuild {
   rank: number;
   matches: number;

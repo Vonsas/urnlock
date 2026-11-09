@@ -19,7 +19,7 @@ const configJson = await tierPageConfig(lang, 'tier');
   <TierControls lang={lang} active="tier" />
 
   {/* 태그 설명 줄은 뺐다 (2026-10-09 사용자) — 태그 이름이 뜻을 말하고, 마우스를 올리면 같은 설명 */}
-  <div data-tier-view class="mt-4"></div>
+  <div data-tier-view class="mt-4 min-h-svh"></div>
   <p class="mt-6 max-w-3xl text-xs text-paper-400">{t.tiers.method}</p>
 
   <script type="application/json" id="tier-config" set:html={configJson} />

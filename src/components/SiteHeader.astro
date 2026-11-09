@@ -7,6 +7,7 @@
 import AccountButton from './AccountButton.astro';
 import LanguageSwitcher from './LanguageSwitcher.astro';
 import SearchBox from './SearchBox.astro';
+import ThemeButton from './ThemeButton.astro';
 import Wordmark from './Wordmark.astro';
 import { localePath, stripLocale, useTranslations, type Locale } from '../i18n';
 import { MENU_SECTIONS } from '../lib/sections';
@@ -17,30 +18,59 @@ interface Props {
 }
 const { lang, hideSearch = false } = Astro.props;
 const t = useTranslations(lang);
-const current = stripLocale(Astro.url.pathname).split('/')[0];
+const path = stripLocale(Astro.url.pathname).replace(/\/+$/, '');
+const current = path.split('/')[0];
+/**
+ * 탭 아래 두 칸 — 마우스를 올리면(누르면 그 탭 페이지로), 터치 · 키보드는 처음 누르면 뜬다. popover 라 메뉴 줄의 가로 스크롤에 잘리지 않는다.
+ * popover 를 모르는 브라우저에선 hidden 그대로 — 탭은 그냥 링크.
+ * '랭킹' = 순위표 · 영웅 순위표 (2026-11-04), '가이드' = 영웅 가이드 · 게임 가이드 (2026-11-04). ('아이템' 아래 아이템 정보 · 통계 두 칸은 2026-11-04 뺐다 — 통계는 아이템 상세 창 탭으로)
+ */
+const subMenus: Partial<Record<string, { id: string; links: Array<{ href: string; label: string; here?: boolean }> }>> = {
+  players: {
+    id: 'ranking-menu',
+    links: [
+      { href: localePath(lang, 'players'), label: t.nav.rankingBoard, here: path === 'players' },
+      { href: localePath(lang, 'players/heroes'), label: t.nav.rankingHeroes, here: path === 'players/heroes' },
+    ],
+  },
+  guides: {
+    id: 'guides-menu',
+    links: [
+      { href: localePath(lang, 'guides'), label: t.nav.guidesHero, here: path === 'guides' },
+      { href: localePath(lang, 'guides/game'), label: t.nav.guidesGame, here: path === 'guides/game' },
+    ],
+  },
+};
 ---
 
 <header class="border-b border-line bg-band">
-  <div class="mx-auto flex max-w-page flex-wrap items-center gap-x-6 px-4 max-[359px]:gap-x-3 sm:px-6">
-    <a href={localePath(lang)} class="order-1 flex h-14 items-center gap-2.5" aria-label={`${t.site.name} — ${t.site.subtitle}`}>
+  <div class="mx-auto flex max-w-header flex-wrap items-center gap-x-6 px-4 max-[359px]:gap-x-3 sm:px-6 xl:px-8">
+    <a href={localePath(lang)} class="order-1 flex h-14 items-center gap-2.5">
       <Wordmark class="text-[1.625rem] text-paper-50" />
+      <span class="sr-only">{t.site.name} — {t.site.subtitle}</span>
     </a>
 
+    {/* 휴대폰: 간격을 좁혀 폭에 맞춰 벌림 — 한국어 · 중국어는 8개가 한 줄에 다 보인다 (2026-11-03 사용자: '패치노트' 가 잘림).
+        그래도 넘치면(영어 · 360px 쯤의 중국어 · 더 좁은 폰) 옆으로 밀고, 더 밀 수 있는 쪽 끝을 흐리게 (data-more · data-less, 아래 스크립트) */}
     <nav
+      data-site-nav
       aria-label={t.nav.label}
       class="order-6 -mx-4 w-[calc(100%+2rem)] overflow-x-auto px-4 [scrollbar-width:none] sm:mx-0 sm:w-full sm:px-0 xl:order-2 xl:w-auto xl:self-stretch [&::-webkit-scrollbar]:hidden"
     >
-      <ul class="flex h-full gap-6 whitespace-nowrap xl:gap-4 2xl:gap-6">
+      <ul class="flex h-full gap-2.5 whitespace-nowrap max-sm:justify-between sm:gap-6 xl:gap-4 2xl:gap-6">
         {
           // 전적 페이지는 메뉴에서 '랭킹' 으로 (2026-10-16 사용자: 검색 없이 들어가면 나오는 공식 랭크 순위표로 가는 길이 없었다).
           // 개별 전적은 그대로 오른쪽 위 검색창으로
           MENU_SECTIONS.map((s) => {
             const active = current === s.key;
+            const ranking = s.key === 'players';
+            const sub = subMenus[s.key];
             return (
               <li>
                 <a
                   href={localePath(lang, s.key)}
                   aria-current={active ? 'page' : undefined}
+                  data-menu-trigger={sub?.id}
                   class:list={[
                     'flex h-11 items-center border-b-[3px] pt-[3px] text-[0.9375rem] transition-colors duration-150 xl:h-full',
                     active
@@ -50,8 +80,17 @@ const current = stripLocale(Astro.url.pathname).split('/')[0];
                         : 'border-transparent text-paper-500 hover:text-paper-200',
                   ]}
                 >
-                  {s.key === 'players' ? t.nav.ranking : t.nav[s.key]}
+                  {ranking ? t.nav.ranking : t.nav[s.key]}
                 </a>
+                {sub && (
+                  <div id={sub.id} popover hidden class="nav-pop">
+                    {sub.links.map((l) => (
+                      <a href={l.href} aria-current={l.here ? 'page' : undefined}>
+                        {l.label}
+                      </a>
+                    ))}
+                  </div>
+                )}
               </li>
             );
           })
@@ -61,7 +100,9 @@ const current = stripLocale(Astro.url.pathname).split('/')[0];
 
     {/* sm+ 검색창은 남는 자리만큼만 (최대 18rem · xl 14rem · 2xl 20rem) — 고정 폭이면 영어 메뉴(2xl)나 좁은 sm 에서 계정 단추가 아랫줄로 밀렸다 (2026-10-29) */}
     {!hideSearch && <SearchBox lang={lang} class="order-4 mb-1 w-full sm:order-3 sm:mb-0 sm:ml-auto sm:w-auto sm:min-w-32 sm:max-w-72 sm:flex-1 xl:max-w-56 2xl:max-w-80" />}
-    <div class:list={['order-3 ml-auto sm:order-4', !hideSearch && 'sm:ml-0']}>
+    {/* 색 테마 단추는 PC(sm+)만 — 휴대폰 첫 줄은 로고 · 언어 · 계정으로 꽉 차서 푸터에서 고른다 */}
+    <div class:list={['order-3 ml-auto flex items-center gap-2 sm:order-4', !hideSearch && 'sm:ml-0']}>
+      <ThemeButton lang={lang} />
       <LanguageSwitcher lang={lang} />
     </div>
     {/* 계정 — 로그인 / 닉네임 메뉴 (2026-10-07). 언어 옆 */}
@@ -70,3 +111,94 @@ const current = stripLocale(Astro.url.pathname).split('/')[0];
     </div>
   </div>
 </header>
+
+<script>
+  // 메뉴 줄이 넘치면 더 밀 수 있는 쪽 끝을 흐리게 (오른쪽 data-more · 왼쪽 data-less), 지금 페이지 탭이 밖이나 흐림 구간에 있으면 보이게 민다
+  const nav = document.querySelector<HTMLElement>('[data-site-nav]');
+  if (nav) {
+    // 스크롤 값이 아니라 첫 · 마지막 탭이 실제로 가장자리 밖에 있는지로 — 조금만 넘치는 폭에선 안쪽 여백(16px)만 밀려 가려진 글자가 없다
+    const links = nav.querySelectorAll(':scope > ul > li > a');
+    const first = links[0];
+    const last = links[links.length - 1];
+    const update = () => {
+      if (!first || !last) return;
+      const n = nav.getBoundingClientRect();
+      nav.toggleAttribute('data-more', last.getBoundingClientRect().right > n.right + 1);
+      nav.toggleAttribute('data-less', first.getBoundingClientRect().left < n.left - 1);
+    };
+    const cur = nav.querySelector<HTMLElement>('[aria-current="page"]');
+    if (cur) {
+      // 흐림 폭(global.css [data-site-nav] 의 2.5rem = 40px)만큼 안쪽까지 들어와야 밑줄까지 또렷하다
+      const over = cur.getBoundingClientRect().right - (nav.getBoundingClientRect().right - 40);
+      if (over > 0) nav.scrollLeft += over + 8;
+    }
+    update();
+    nav.addEventListener('scroll', update, { passive: true });
+    // 글꼴이 늦게 들어오거나 화면 폭이 바뀌면 메뉴 폭이 달라진다
+    const ro = new ResizeObserver(update);
+    ro.observe(nav);
+    for (const li of nav.querySelectorAll('li')) ro.observe(li);
+    // 글꼴이 바뀌어 줄 길이가 줄면 브라우저가 스크롤 값을 깎는데, 그땐 scroll 이벤트가 안 올 수 있다
+    void document.fonts?.ready.then(update);
+    addEventListener('load', update);
+  }
+
+  // 탭 아래 두 칸('랭킹') — 마우스는 올리면 열리고 누르면 그 탭 페이지로, 터치 · 키보드는 처음 누르면 열린다
+  for (const trigger of document.querySelectorAll<HTMLAnchorElement>('[data-menu-trigger]')) {
+    const menu = document.getElementById(trigger.dataset.menuTrigger ?? '');
+    if (!menu || !('showPopover' in menu)) continue;
+    menu.hidden = false;
+    // popover 를 쓸 수 있을 때만 '펼침' 상태를 알린다 (못 쓰는 브라우저에선 그냥 링크)
+    trigger.setAttribute('aria-controls', menu.id);
+    trigger.setAttribute('aria-expanded', 'false');
+    let timer = 0;
+    let pointer = '';
+    /** 누르기 시작할 때 열려 있었는지 — 바깥 누르기로 닫히는 게 click 보다 먼저라, click 에서 보면 늘 닫혀 있다 (#102 리뷰: 터치 두 번째 누름이 다시 열기만 했다) */
+    let wasOpen = false;
+    const isOpen = () => menu.matches(':popover-open');
+    const place = () => {
+      const r = trigger.getBoundingClientRect();
+      menu.style.top = `${r.bottom}px`;
+      menu.style.left = `${Math.max(8, Math.min(r.left - 12, innerWidth - menu.offsetWidth - 8))}px`;
+    };
+    const open = () => {
+      clearTimeout(timer);
+      if (!isOpen()) menu.showPopover();
+      place();
+    };
+    const close = () => {
+      clearTimeout(timer);
+      timer = window.setTimeout(() => isOpen() && menu.hidePopover(), 150);
+    };
+    for (const n of [trigger, menu]) {
+      n.addEventListener('pointerenter', (e) => e.pointerType === 'mouse' && open());
+      n.addEventListener('pointerleave', (e) => e.pointerType === 'mouse' && close());
+    }
+    trigger.addEventListener('pointerdown', (e) => {
+      pointer = e.pointerType;
+      wasOpen = isOpen();
+    });
+    trigger.addEventListener('click', (e) => {
+      const mouse = pointer === 'mouse';
+      const opened = pointer ? wasOpen : isOpen(); // 키보드(Enter)는 pointerdown 이 없다
+      pointer = '';
+      wasOpen = false;
+      if (mouse || opened) return;
+      e.preventDefault();
+      open();
+    });
+    // 키보드로 '랭킹' 과 두 칸 밖으로 나가면 닫는다
+    for (const n of [trigger, menu])
+      n.addEventListener('focusout', (e) => {
+        const to = e.relatedTarget as Node | null;
+        if (to && (to === trigger || menu.contains(to))) return;
+        if (isOpen() && to) menu.hidePopover();
+      });
+    menu.addEventListener('toggle', () => trigger.setAttribute('aria-expanded', String(isOpen())));
+    // 열린 채로 화면이 움직이면 '랭킹' 과 떨어지므로 닫는다
+    const hide = () => isOpen() && menu.hidePopover();
+    addEventListener('scroll', hide, { passive: true });
+    nav?.addEventListener('scroll', hide, { passive: true });
+    addEventListener('resize', hide);
+  }
+</script>

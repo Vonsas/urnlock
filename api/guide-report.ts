@@ -26,7 +26,7 @@ export async function POST(request: Request): Promise<Response> {
   if (busy) return busy;
   if (!sameOrigin(request)) return json({ error: 'auth' }, 403);
   const session = await userSession(request).catch(() => null);
-  const { id, reason, text } = (await request.json().catch(() => ({}))) as { id?: unknown; reason?: unknown; text?: unknown };
+  const { id, reason, text } = ((await request.json().catch(() => null)) ?? {}) as { id?: unknown; reason?: unknown; text?: unknown }; // JSON null 도 400 으로 (#78)
   if (!isGuideId(id) || !REPORT_REASONS.includes(reason as ReportReason)) return json({ error: 'server' }, 400);
   const note = typeof text === 'string' ? text.replace(/\s+/g, ' ').trim().slice(0, 200) : '';
   try {

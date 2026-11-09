@@ -3,10 +3,12 @@
  * 돌아올 곳: /api/auth/steam-callback (원래 보던 페이지 주소를 return 으로 들고 간다)
  * state — 무작위 값을 쿠키(ul_st)와 돌아올 주소 양쪽에 넣어, 돌아왔을 때 이 브라우저가 시작한 로그인인지 확인한다 (로그인 위조 막기, 2026-10-14)
  */
-import { originOf, redirect, safeReturn, setCookie } from '../_lib/http.js';
+import { originOf, proxyBlocked, redirect, safeReturn, setCookie } from '../_lib/http.js';
 
 // 요청 수 제한(#18)은 걸지 않는다 — 저장소를 안 쓰는 이동뿐이라, 걸면 다른 사이트가 방문자 브라우저로 11번 불러 로그인을 막을 수 있다
 export function GET(request: Request): Response {
+  const blocked = proxyBlocked(request); // 세지는 않아도 입구 검사(#51)는 한다
+  if (blocked) return blocked;
   const url = new URL(request.url);
   const origin = originOf(request);
   const back = safeReturn(url.searchParams.get('return'));

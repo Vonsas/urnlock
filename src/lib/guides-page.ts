@@ -35,6 +35,7 @@ export async function guidesPageConfig(lang: Locale, mode: GuidesConfig['mode'])
     ranks: Object.fromEntries(await Promise.all(ranks.map(async (r) => [r.tier, { name: r.name, icon: await gameImage(r.image, 48, 48) }] as const))),
     paths: {
       list: localePath(lang, 'guides'),
+      game: localePath(lang, 'guides/game'),
       view: localePath(lang, 'guides/view'),
       write: localePath(lang, 'guides/write'),
       heroes: localePath(lang, 'heroes'),

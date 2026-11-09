@@ -1,6 +1,13 @@
 # 계획서 - 패치가 올라오면 최대한 빨리 사이트 반영 + 자동 번역
 
-작성 2026-10-15. 다른 PC 에서 이어 할 것. 진행 상황은 맨 아래 체크리스트에 표시.
+작성 2026-10-15. 진행 상황은 맨 아래 체크리스트에 표시.
+
+> 2026-11-04 설계 바꿈 - 아래 '설계' 의 `api/patch-watch.ts` + cron-job.org 는 하지 않는다:
+> Vercel 함수가 12개 한도로 꽉 찼고(새 함수 불가), 11/2 에 만든 Cloudflare Worker(`workers/rebuild-trigger`, docs/rebuild-trigger.md)가
+> 이미 GitHub 토큰(Actions 쓰기)을 갖고 예약으로 돈다. 그래서 그 Worker 에 2분마다 새 Steam 글 감시를 붙였다 -
+> 새 글이 사이트 `health.json` 의 `currentPatch` 와 다르면 `daily-rebuild` 를 `workflow_dispatch`(source=patch-{글 번호}) 로 부른다.
+> 새 GitHub 토큰 · Vercel 환경 변수 · cron-job.org 가입이 필요 없다 (아래 '사용자 2 · 3' 은 없어짐).
+> 남은 것: ① 번역 예약 작업의 클라우드 네트워크 허용 ② 루틴 API 토큰을 저장소 시크릿에(daily-rebuild 가 패치 보관 뒤 /fire 로 부른다).
 
 ## 왜 (현재 문제)
 
@@ -20,7 +27,7 @@
 ## 설계
 
 ```
-cron-job.org (10분마다, 무료)
+cron-job.org (2분마다, 무료)
    └─▶ GET https://www.urnlock.com/api/patch-watch?key=<비밀값>      (Vercel 함수, 새로 만듦)
           1) deadlock-api /v2/patches 에서 가장 최근 '패치' 글(Steam, isPatchPost 통과)의 link 를 구함
           2) 우리 사이트 /health.json 의 currentPatch.url 과 비교
@@ -70,15 +77,15 @@ Claude 예약 작업 'Urnlock 패치노트 자동 번역' (이미 만들어 둠)
    - Vercel 프로젝트 → Settings → Environment Variables (Production) 에
      `GITHUB_DISPATCH_TOKEN` = 그 토큰, `PATCH_WATCH_KEY` = 아무 긴 무작위 문자열 (Claude 가 만들어 줌).
 3. cron-job.org
-   - 가입 → Create cronjob → URL `https://www.urnlock.com/api/patch-watch?key=<PATCH_WATCH_KEY>` · 10분마다 · GET.
+   - 가입 → Create cronjob → URL `https://www.urnlock.com/api/patch-watch?key=<PATCH_WATCH_KEY>` · 2분마다 · GET.
    - (선택) 6시간마다 재빌드 작업 - 2번 토큰으로 GitHub dispatch 를 직접 부르거나, Claude 가 patch-watch 에 `mode=rebuild` 를 만들어 그 주소를 등록.
 
 ## 현재 예약 작업 상태 (2026-10-15)
 
 - 이름 'Urnlock 패치노트 자동 번역', id `<루틴 ID>`, (claude.ai 루틴 주소)
 - 매일 KST 10:00 · 22:00 (`0 1,13 * * *` UTC), 모델 claude-sonnet-5-5, 환경 Default(`env_01XP8ZNnDSiTgg25MPLoSbFW`, 이때 처음 만들어짐), 커넥터 없음.
-- 하는 일: main 최신화 → `npm i -g pnpm@12.6.0`(corepack 은 클라우드에서 안 됨) → API 접속 확인 → `LIGHT_BUILD=1 pnpm build` →
-  `.cache/patch-i18n/todo-{ko,zh}.json` 이 비었으면 끝 / 있으면 RULES.md 대로 번역 → 숫자·공식 이름 검사 → 다시 빌드로 확인 → 두 JSON 만 커밋·푸시.
+- 하는 일: main 최신화 → `npm i -g pnpm@12.6.0`(corepack 은 클라우드에서 안 됨) → API 접속 확인 → `npx --yes tsx@4.23.15 tools/patch-todo.ts`(2026-11-05 - 빌드 대신, 약 10초. pnpm install 도 필요 없음) →
+  `.cache/patch-i18n/todo-{ko,zh}.json` 이 비었으면 끝 / 있으면 RULES.md 대로 번역 → 숫자·공식 이름 검사 → 같은 도구로 다시 확인(0줄) → 두 JSON 만 커밋·푸시.
 - 첫 시험 결과: 저장소 열기·설치 성공, deadlock-api 접속이 클라우드 네트워크 정책에 막힘(403) → 커밋 없이 멈춤 (안전장치대로).
   직접 할 일 1번을 하기 전까지는 예약 시간마다 같은 이유로 멈춘다 (사이트 영향 없음).
 - GitHub 연결: claude.ai 에 GitHub 계정 연결 + Claude GitHub App 을 Vonsas 계정에 설치 완료 (처음엔 앱 미설치로 'repo_access_denied').
@@ -91,10 +98,11 @@ Claude 예약 작업 'Urnlock 패치노트 자동 번역' (이미 만들어 둠)
 
 ## 체크리스트
 
-- [ ] 직접 1 - 클라우드 네트워크 허용 → Claude 가 `RemoteTrigger run` 으로 번역 예약 작업 다시 시험
-- [ ] Claude 1 - api/patch-watch.ts
-- [ ] Claude 2 - 워크플로 repository_dispatch
-- [ ] 직접 2 - GitHub 토큰 · Vercel 환경 변수
-- [ ] 직접 3 - cron-job.org 등록
-- [ ] Claude 3 - 번역 예약 작업 webhook 연결
-- [ ] Claude 4·5 - 기록 · 시험
+- [ ] 사용자 1 - 클라우드 네트워크 허용 → Claude 가 `RemoteTrigger run` 으로 번역 예약 작업 다시 시험 (2026-11-03 까지 매번 403 으로 멈춤)
+- [x] ~~Claude 1 - api/patch-watch.ts~~ → Worker 10분 감시로 대신 (2026-11-04)
+- [x] Claude 2 - 워크플로: repository_dispatch 대신 기존 workflow_dispatch + 실행 이름 'daily-rebuild (patch-…)'
+- [x] ~~사용자 2 - GitHub 토큰 · Vercel 환경 변수~~ (필요 없음 - Worker 의 기존 토큰)
+- [x] ~~사용자 3 - cron-job.org 등록~~ (필요 없음 - Worker 예약 `*/2 * * * *` 를 대시보드에 추가 · 또는 `wrangler deploy`)
+- [x] Claude 3 - 번역 예약 작업 연결: 루틴의 GitHub 트리거는 push 를 받지 않아(PR · 릴리스 · 이슈만) daily-rebuild 가 patch-archive.json 을 푸시한 뒤 루틴 API 트리거(/fire)를 부른다 (2026-11-04)
+- [ ] 사용자 4 - 루틴 API 토큰: claude.ai/code/routines → 'Urnlock 패치노트 자동 번역' 편집 → 트리거 추가 → API → Generate token → 저장소 시크릿 `ROUTINE_FIRE_URL` · `ROUTINE_FIRE_TOKEN`
+- [ ] Claude 4·5 - 기록 · 시험 (Worker 는 가짜 응답 12경우 통과, 실제 새 Steam 글로 한 번 확인)

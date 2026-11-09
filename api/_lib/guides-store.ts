@@ -34,7 +34,7 @@ export const PENDING_IMAGES = 'guides:pending-images';
 export const REPORTED = 'guides:reported';
 export const reportsKey = (id: string) => `reports:${id}`;
 export const votersKey = (id: string) => `guide:voters:${id}`;
-/** hero 를 안 주면 전체, 0 이면 일반 가이드 묶음 */
+/** hero 를 안 주면 전체, 0 이면 게임 가이드 묶음 */
 export const newKey = (hero?: number) => (hero === undefined ? 'guides:new' : `guides:new:${hero}`);
 export const votesKey = (hero?: number) => (hero === undefined ? 'guides:votes' : `guides:votes:${hero}`);
 

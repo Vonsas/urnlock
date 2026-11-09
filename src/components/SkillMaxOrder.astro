@@ -3,7 +3,7 @@
  * 스킬 선마 — 강화 포인트 20까지(둘 마스터 + 셋째 방향) 포인트를 많이 넣은 능력 순서로 묶은 상위 3개와 비율 · 승률 (2026-10-08, 승률 · 포인트 기준은 2026-10-09).
  * 줄마다 그 선마 안에서 가장 많이 쓴 찍는 순서를 SkillTrack 으로 (능력마다 한 줄, 해금 = 보라 마름모 · 강화 = 드는 포인트 — 2026-10-14 게임 빌드 화면처럼).
  * 계산은 data/api/insights.ts maxOrders — 마스터한 순서로 세면 긴 판만 남아 승률이 부풀었다.
- * 빌드 탭 맨 위, 보기(공식·프로·상위권·통계)와 상관없이 늘 보인다. 기준은 티어와 같은 전령사+ 랭크 · 최근 14일.
+ * 지표 탭 승률 추이 위 (2026-11-07 사용자 — 예전엔 빌드 탭 맨 위). 기준은 티어와 같은 전령사+ 랭크 · 최근 14일.
  * 능력 id 가 하나라도 이 영웅 능력과 맞지 않는 순서는 뺀다.
  */
 import Panel from './Panel.astro';
@@ -45,22 +45,22 @@ function completePath(path: number[], order: number[]): number[] {
 {
   rows.length > 0 && (
     <Panel title={t.heroes.maxOrderTitle} bodyClass="px-4 pb-4">
-      <ol class="grid gap-1.5">
+      <ol class="divide-y divide-line">
         {rows.map((row, r) => (
-          <li class:list={['flex flex-wrap items-center gap-x-4 gap-y-2 rounded-md p-2', r === 0 ? 'bg-ink-800' : 'bg-ink-850']}>
+          <li class="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-2 py-2.5">
             <div class="w-full min-w-0 sm:w-auto sm:flex-1">
               <SkillTrack lang={lang} abilities={abilities} order={row.full} predictedFrom={row.path.length} />
             </div>
             <span class="ml-auto flex items-center gap-4">
               <span class="flex flex-none flex-col items-end gap-1">
-                <span class:list={['text-sm font-bold tabular-nums', r === 0 ? 'text-paper-50' : 'text-paper-300']}>{formatPercent(lang, row.share)}</span>
+                <span class:list={['text-sm font-semibold tabular-nums', r === 0 ? 'text-paper-50' : 'text-paper-300']}>{formatPercent(lang, row.share)}</span>
                 <span class="h-1 w-14 overflow-hidden rounded-full bg-ink-700" aria-hidden="true">
                   <span class="block h-full rounded-full bg-brass-400" style={`width:${Math.min(100, row.share).toFixed(1)}%`} />
                 </span>
               </span>
               <span class="flex w-14 flex-none flex-col items-end gap-0.5" title={fill(t.heroes.matchCount, { n: formatNumber(lang, row.matches) })}>
                 <span class="text-2xs text-paper-400">{t.heroes.chartWinRate}</span>
-                <span class:list={['text-sm font-bold tabular-nums', r === 0 ? 'text-paper-50' : 'text-paper-300']}>{formatPercent(lang, row.winRate)}</span>
+                <span class:list={['text-sm font-semibold tabular-nums', r === 0 ? 'text-paper-50' : 'text-paper-300']}>{formatPercent(lang, row.winRate)}</span>
               </span>
             </span>
           </li>

@@ -18,7 +18,8 @@ const t = useTranslations(lang);
 const SHOW = 5;
 
 const hit = notes
-  .map((note) => ({ note, group: note.sections.flatMap((s) => s.blocks).find((b) => b.type === 'group' && b.kind === 'hero' && b.slug === heroSlug) }))
+  // 영웅 구역만 — 기타 구역('Street Brawl')의 그 모드 전용 변경은 넣지 않는다
+  .map((note) => ({ note, group: note.sections.filter((s) => s.key === 'heroes').flatMap((s) => s.blocks).find((b) => b.type === 'group' && b.kind === 'hero' && b.slug === heroSlug) }))
   .find((x) => x.group);
 const lines = hit?.group?.type === 'group' ? hit.group.lines : [];
 const isLatest = hit && notes[0]?.id === hit.note.id;

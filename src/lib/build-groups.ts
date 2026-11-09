@@ -1,4 +1,5 @@
 /** 게임 빌드 공통 손질 — 영웅 빌드 탭(BuildCard)과 빌드 페이지가 같이 쓴다 */
+import type { GameBuild } from '../data';
 import type { Dictionary } from '../i18n';
 
 // 묶음 이름을 안 바꾼 빌드는 게임 내부 이름('#Citadel_HeroBuilds_MidGame')이 온다 → 게임에서 보이는 이름으로
@@ -17,6 +18,11 @@ export function groupName(name: string, t: Dictionary): string {
   if (!m) return name;
   const key = GROUP_KEYS[m[1].toLowerCase()];
   return key ? t.heroes.buildGroup[key] : m[1].replace(/([a-z])([A-Z])/g, '$1 $2');
+}
+
+/** 화면에 나오는 묶음 — 상점에 있는 아이템만, 빈 묶음은 뺀다 (빌드 페이지 카드와 설명 파일의 칸 순서가 이것으로 맞는다) */
+export function shopGroups(groups: GameBuild['groups'], inShop: (itemId: number) => boolean): GameBuild['groups'] {
+  return groups.map((g) => ({ ...g, items: g.items.filter((it) => inShop(it.itemId)) })).filter((g) => g.items.length);
 }
 
 /**

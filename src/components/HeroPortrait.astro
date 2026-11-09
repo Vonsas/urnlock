@@ -13,14 +13,23 @@ interface Props {
   image?: HeroImages;
   class?: string;
   size?: 'sm' | 'md' | 'lg';
+  /**
+   * lg 만: 화면에 그려질 너비(img sizes). 주면 작은 그림(160px)을 함께 만들어 srcset 으로 고르게 한다 —
+   * 모바일 영웅 목록은 칸이 75px 안팎이라 280px 그림의 절반이면 충분하다 (2026-11-05 측정: 첫 화면 그림 1MB).
+   */
+  sizes?: string;
 }
-const { slug, name, image, class: className, size = 'md' } = Astro.props;
+const { slug, name, image, class: className, size = 'md', sizes } = Astro.props;
 const text = { sm: 'text-[0.6875rem]', md: 'text-lg', lg: 'text-4xl' }[size];
 
+const card = size === 'lg' ? await gameImage(image?.card, 280, 380) : undefined;
 const src =
   size === 'lg'
-    ? ((await gameImage(image?.card, 280, 380)) ?? (await gameImage(image?.small, 128, 128)))
+    ? (card ?? (await gameImage(image?.small, 128, 128)))
     : await gameImage(image?.small ?? image?.card, size === 'sm' ? 64 : 128, size === 'sm' ? 64 : 128);
+// 작은 판은 큰 카드가 있을 때만 — 큰 카드가 실패해 128px 정사각으로 대신하면 srcset 을 붙이지 않는다
+const small = card && sizes ? await gameImage(image?.card, 160, 217) : undefined;
+const srcset = small ? `${small} 160w, ${card} 280w` : undefined;
 ---
 
 <div
@@ -36,7 +45,7 @@ const src =
 >
   {
     src ? (
-      <img src={src} alt="" loading="lazy" decoding="async" class="absolute inset-0 size-full object-cover object-top" />
+      <img src={src} srcset={srcset} sizes={srcset ? sizes : undefined} alt="" loading="lazy" decoding="async" class="absolute inset-0 size-full object-cover object-top" />
     ) : (
       <span aria-hidden="true" class="opacity-80">
         {initialsFor(slug, size === 'sm' ? 1 : 2)}

@@ -50,13 +50,24 @@ if (root) {
     return n;
   }
 
+  // Cloudflare Access(#76) 오류 — 서버가 403 access · 503 access-config 로 따로 알려 준다 (비밀번호 · 저장소 문제와 섞지 않게)
+  const ACCESS_TEXT = 'Cloudflare Access 이메일 인증이 필요합니다. www.urnlock.com/admin/ 에서 열어 새로고침한 뒤 다시 인증해 주세요.';
+  const ACCESS_CONFIG_TEXT = 'Access 설정이 틀렸습니다 (Vercel 환경 변수 ACCESS_TEAM_DOMAIN · ACCESS_AUD).';
+  /** 실패 응답의 안내 문구 */
+  async function failText(res: Response, fallback: string): Promise<string> {
+    const { error } = (await res.clone().json().catch(() => ({}))) as { error?: string };
+    if (error === 'access') return ACCESS_TEXT;
+    if (error === 'access-config') return ACCESS_CONFIG_TEXT;
+    return res.status === 429 ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : res.status === 503 ? '저장소에 잠시 닿지 못합니다. 잠시 후 다시 시도해 주세요.' : fallback;
+  }
+
   async function act(id: string, action: string, url?: string) {
     const guides = status === 'guides' || status === 'photos' || status === 'reports';
     if (action === 'ban' && !confirm(guides ? '이 계정을 차단하고 이 가이드를 지울까요?' : '이 계정을 차단하고 그 사람의 대기 중인 팁을 모두 지울까요?')) return;
     if (action === 'unpublish' && guides && !confirm('이 가이드를 내릴까요? (지워지고 되돌릴 수 없습니다)')) return;
     const res = await fetch(guides ? '/api/admin/guides' : '/api/admin/tips', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, action, url }) });
     if (res.status === 401) return showLogin('다시 로그인해 주세요.');
-    msg.textContent = res.ok ? '처리했습니다.' : res.status === 429 ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : res.status === 503 ? '저장소에 잠시 닿지 못합니다. 잠시 후 다시 시도해 주세요.' : '처리하지 못했습니다.';
+    msg.textContent = res.ok ? '처리했습니다.' : await failText(res, '처리하지 못했습니다.');
     void load();
   }
 
@@ -102,7 +113,7 @@ if (root) {
     const hero = cfg.heroes[g.hero];
     const head = el('p', 'flex flex-wrap gap-x-3 text-xs text-paper-500');
     head.append(
-      el('span', 'font-semibold text-brass-200', g.hero === 0 ? '일반' : (hero?.name ?? `#${g.hero}`)),
+      el('span', 'font-semibold text-brass-200', g.hero === 0 ? '게임 가이드' : (hero?.name ?? `#${g.hero}`)),
       el('span', 'text-paper-200', g.name),
       displayLabel(g.display),
       el('span', '', g.rank ? `${cfg.ranks[g.rank.tier] ?? g.rank.tier} ${g.rank.sub}` : '랭크 없음'),
@@ -185,7 +196,7 @@ if (root) {
     if (status === 'reports') {
       const res = await fetch('/api/admin/guides?reports=1');
       if (res.status === 401) return showLogin();
-      if (!res.ok) return void (msg.textContent = res.status === 429 ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : res.status === 503 ? '저장소에 잠시 닿지 못합니다. 잠시 후 다시 시도해 주세요.' : '목록을 불러오지 못했습니다.');
+      if (!res.ok) return void (msg.textContent = await failText(res, '목록을 불러오지 못했습니다.'));
       const { guides } = (await res.json()) as { guides: AdminGuide[] };
       login.hidden = true;
       view.hidden = false;
@@ -195,7 +206,7 @@ if (root) {
     if (status === 'photos') {
       const res = await fetch('/api/admin/guides?images=1');
       if (res.status === 401) return showLogin();
-      if (!res.ok) return void (msg.textContent = res.status === 429 ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : res.status === 503 ? '저장소에 잠시 닿지 못합니다. 잠시 후 다시 시도해 주세요.' : '목록을 불러오지 못했습니다.');
+      if (!res.ok) return void (msg.textContent = await failText(res, '목록을 불러오지 못했습니다.'));
       const { guides } = (await res.json()) as { guides: AdminGuide[] };
       login.hidden = true;
       view.hidden = false;
@@ -205,7 +216,7 @@ if (root) {
     if (status === 'guides') {
       const res = await fetch('/api/admin/guides');
       if (res.status === 401) return showLogin();
-      if (!res.ok) return void (msg.textContent = res.status === 429 ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : res.status === 503 ? '저장소에 잠시 닿지 못합니다. 잠시 후 다시 시도해 주세요.' : '목록을 불러오지 못했습니다.');
+      if (!res.ok) return void (msg.textContent = await failText(res, '목록을 불러오지 못했습니다.'));
       const { guides } = (await res.json()) as { guides: AdminGuide[] };
       login.hidden = true;
       view.hidden = false;
@@ -214,7 +225,7 @@ if (root) {
     }
     const res = await fetch(`/api/admin/tips?status=${status}`);
     if (res.status === 401) return showLogin();
-    if (!res.ok) return void (msg.textContent = res.status === 429 ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : res.status === 503 ? '저장소에 잠시 닿지 못합니다. 잠시 후 다시 시도해 주세요.' : '목록을 불러오지 못했습니다.');
+    if (!res.ok) return void (msg.textContent = await failText(res, '목록을 불러오지 못했습니다.'));
     const { tips } = (await res.json()) as { tips: AdminTip[] };
     login.hidden = true;
     view.hidden = false;
@@ -239,7 +250,7 @@ if (root) {
     }
     // JSON 이 아닌 응답(예비 배포엔 /api 가 없어 404 HTML)도 '저장소에 닿지 못함' (#21)
     const notJson = !(res.headers.get('content-type') ?? '').includes('application/json');
-    msg.textContent = notJson ? '저장소에 잠시 닿지 못합니다. 잠시 후 다시 시도해 주세요.' : body.error === 'busy' ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : body.error === 'readonly' ? '저장소에 잠시 닿지 못합니다. 잠시 후 다시 시도해 주세요.' : body.error === 'rate' ? '시도가 너무 많습니다. 15분 뒤에 다시 해 주세요.' : body.error === 'not-configured' ? '관리자 비밀번호가 설정되지 않았습니다 (Vercel 환경 변수).' : '비밀번호가 맞지 않습니다.';
+    msg.textContent = notJson ? '저장소에 잠시 닿지 못합니다. 잠시 후 다시 시도해 주세요.' : body.error === 'access' ? ACCESS_TEXT : body.error === 'access-config' ? ACCESS_CONFIG_TEXT : body.error === 'busy' ? '요청이 너무 많습니다. 잠시 후 다시 시도해 주세요.' : body.error === 'readonly' ? '저장소에 잠시 닿지 못합니다. 잠시 후 다시 시도해 주세요.' : body.error === 'rate' ? '시도가 너무 많습니다. 15분 뒤에 다시 해 주세요.' : body.error === 'not-configured' ? '관리자 비밀번호가 설정되지 않았습니다 (Vercel 환경 변수).' : '비밀번호가 맞지 않습니다.';
   });
   root.querySelector('[data-admin-logout]')?.addEventListener('click', async () => {
     await fetch('/api/admin/login', { method: 'DELETE' });

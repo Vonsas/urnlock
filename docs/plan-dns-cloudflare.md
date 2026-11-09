@@ -4,7 +4,20 @@
 이유: #34 사진(R2)을 자기 도메인으로 내려면 Cloudflare 존이 필요하고, #33 예비 배포 때 맨 도메인(urnlock.com)까지 돌리려면
 가비아 DNS 로는 안 된다 (맨 도메인에 CNAME 불가 - Cloudflare 는 CNAME 평탄화로 된다).
 
-## 지금 레코드 (2026-10-29 가비아 네임서버에 직접 물어 확인)
+## 지금 레코드 (2026-11-01, #55 · #56 뒤)
+
+| 이름 | 종류 | 값 | 프록시 |
+|---|---|---|---|
+| `www.urnlock.com` | CNAME | `urnlock.pages.dev` (Pages 커스텀 도메인이 만든 줄) | Proxied(주황) |
+| `urnlock.com` | A | `216.198.79.1` (값만 남음 - Cloudflare Redirect Rule 이 www 로 301, Vercel 까지 안 감) | Proxied(주황) |
+| `origin.urnlock.com` | CNAME | Vercel (Pages 함수가 `/api` 를 넘기는 곳) | DNS only(회색) |
+| `urnlock.com` | TXT | 구글 서치 콘솔 (지우면 안 됨) | - |
+
+- 원칙: 사이트 주소(www · 맨 도메인)는 Proxied, Vercel 로 가는 주소(origin)는 DNS only. origin 을 주황으로 바꾸면 Vercel 인증서 발급이 깨지고, Cloudflare 를 두 번 거친다.
+- `static.urnlock.com`(PR #44, Proxied)은 #55 에서 안 쓰게 되어 #56 에서 지웠다.
+- Proxied 라 Cloudflare 설정이 실제로 작동한다: SSL/TLS Full (strict) · 엣지 HSTS 12개월 · robots.txt 는 우리 것 그대로 나간다(2026-11-01 확인 - Cloudflare 의 관리형 robots.txt · AI 수집기 차단을 켜면 바뀌므로 켜기 전에 확인).
+
+## 옮길 때의 레코드 (2026-10-29 가비아 네임서버에 직접 물어 확인)
 
 | 이름 | 종류 | 값 | TTL |
 |---|---|---|---|
@@ -23,7 +36,7 @@
 
 1. Cloudflare 가입 → 바로 2단계 인증 켜기 (DNS 를 쥐면 계정 탈취 = 도메인 탈취).
 2. Onboard a domain → `urnlock.com` → Free 플랜. 자동 검색된 레코드를 위 표와 대조한다.
-   - 세 줄 모두 DNS only (회색 구름) 으로. 주황(프록시)이면 Vercel 인증서 발급 · 도메인 확인이 깨진다.
+   - 세 줄 모두 DNS only (회색 구름) 으로. 주황(프록시)이면 Vercel 인증서 발급 · 도메인 확인이 깨진다. (그때 기준 - 지금은 위 '지금 레코드')
    - 표에 없는 줄이 자동으로 들어왔으면 지운다.
 3. Cloudflare 가 알려 주는 네임서버 2개(`○○○.ns.cloudflare.com`)를 적어 둔다.
 4. 가비아: 도메인 안전잠금이 네임서버 변경을 막으면 잠시 풀고 → 네임서버 설정에서 가비아 3개를 지우고 Cloudflare 2개를 넣는다 → 안전잠금 다시 켜기.

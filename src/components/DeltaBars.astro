@@ -6,7 +6,8 @@
  * 막대에 마우스를 올리면 구간 이름 · 승률 · 판수 (scripts/tooltip.ts). 막대가 적으면(≤6) 막대 끝에 승률 글씨.
  */
 import { useTranslations, type Locale } from '../i18n';
-import { fill, formatNumber, formatPercent } from '../lib/format';
+import { formatNumber, formatPercent } from '../lib/format';
+import { tipAttr, winTone } from '../lib/tip';
 
 interface Props {
   lang: Locale;
@@ -43,7 +44,14 @@ const scale = Math.max(4, Math.ceil((showValues ? maxDev / 0.82 : maxDev) / 2) *
             return (
               <div
                 class="relative flex-1 transition-colors duration-150 hover:bg-paper-50/6"
-                data-tip={`${it.name}\n${t.heroes.chartWinRate} ${formatPercent(lang, it.winRate)} · ${fill(t.heroes.matchCount, { n: formatNumber(lang, it.matches) })}`}
+                data-tip-rows={tipAttr({
+                  h: it.name,
+                  icon: it.icon,
+                  rows: [
+                    [t.heroes.chartWinRate, empty ? '—' : formatPercent(lang, it.winRate), empty ? 0 : winTone(it.winRate)],
+                    [t.tiers.matches, formatNumber(lang, it.matches)],
+                  ],
+                })}
               >
                 {!empty && <span
                   class:list={['absolute inset-x-[18%]', dev >= 0 ? 'rounded-t-xs bg-buff' : 'rounded-b-xs bg-nerf', faded && 'opacity-35']}

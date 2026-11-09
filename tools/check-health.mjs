@@ -7,6 +7,8 @@
 //   - 배포: Production 빌드가 실패했거나(데이터 점검에 걸려 멈춤 · 빌드 오류) 데이터가 30시간 넘게 그대로면 → 이슈. 성공한 배포가 오면 닫는다.
 //   - 번역: 패치노트에 번역 안 된 줄이 있으면 (새 패치) → 이슈. 0 이 되면 닫는다.
 //   - 영웅: 데이터가 덜 들어온 영웅(능력 이름 미번역·상세 없음·이미지 없음)이나 새 영웅이 있으면 → 이슈. 없어지면 닫는다.
+//   - Pages (#53, PAGES_DEPLOY=1 일 때): 성공한 배포인데 pages.dev 가 그 빌드가 아니면 → '데이터 점검 실패 — Pages 에 안 올림' 또는 'Pages 올리기 실패'. 반영되면 닫는다.
+//     Vercel 배포를 되돌렸을 때(Instant Rollback)도 성공 알림이 와서 Pages 를 같이 안 되돌렸으면 열린다 — 되돌릴 땐 둘 다 (plan-cloudflare-split.md 2절).
 // 같은 종류의 이슈는 하나만 열어 두고, 내용이 바뀌면 본문을 고치고 댓글로 알린다. 본문의 숨은 표시(<!-- urnlock-health:종류 -->)로 찾는다.
 // 예전엔 갱신 작업이 배포 반영을 최대 20분 기다렸는데, 그 대기가 Actions 무료 시간 대부분을 썼다 (10월 71번 668분) → 결과 알림을 받아 도는 방식으로.
 import { discord, syncReports } from './health-issues.mjs';
@@ -25,8 +27,14 @@ const staleOnly = process.argv.includes('--stale');
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const STALE_HOURS = 30;
 
-async function health() {
-  const res = await fetch(`${SITE}/health.json?t=${Date.now()}`, { headers: { 'cache-control': 'no-cache' } });
+/** Pages 반영 확인 (#53): 저장소 변수 PAGES_DEPLOY=1 (Vercel 에 Cloudflare 토큰을 넣은 뒤 켬) — 그 전엔 올리기를 안 하므로 확인하지 않는다 */
+const PAGES_CHECK = process.env.PAGES_DEPLOY === '1';
+const PAGES = process.env.PAGES_URL || 'https://urnlock.pages.dev';
+/** Vercel 이 방금 만든 health.json — www 가 Pages 로 넘어간 뒤(⑥)엔 www 가 아니라 여기서 (vercel.json 의 origin 리디렉트가 /health.json 은 뺀다) */
+const ORIGIN = process.env.ORIGIN_URL || 'https://origin.urnlock.com';
+
+async function health(base = SITE, init = {}) {
+  const res = await fetch(`${base}/health.json?t=${Date.now()}`, { headers: { 'cache-control': 'no-cache' }, ...init });
   if (!res.ok) throw new Error(`health.json ${res.status}`);
   return res.json();
 }
@@ -40,6 +48,25 @@ for (let i = 0; status === 'success' && i < 6 && !fresh(h); i++) {
 }
 const dataAge = h ? (Date.now() / 1000 - (h.dataAt ?? h.builtAt)) / 3600 : Infinity;
 console.log(`health: status=${status ?? '-'} stale=${staleOnly} builtAt=${h?.builtAt} dataAge=${dataAge.toFixed(1)}h`);
+
+// Pages 반영 확인 (#53) — Vercel 운영 빌드가 같은 dist 를 Pages 에도 올리므로, 성공한 배포 뒤 pages.dev 의 builtAt 이 이 빌드와 같아야 한다.
+// 이 빌드의 health.json: origin = 늘 Vercel 의 지금 운영 배포 (리디렉트를 따라가면 www = Pages 일 수 있어 따라가지 않음 · 알림이 늦어도 되게 20분 기준을 걸지 않음)
+// → origin 이 없으면(⑥ 전) www 가 방금 것일 때 www (그때 www = Vercel)
+let vercelH = null;
+let pagesH = null;
+if (PAGES_CHECK && status === 'success') {
+  vercelH = await health(ORIGIN, { redirect: 'error' }).catch(() => null);
+  if (!vercelH) vercelH = fresh(h) ? h : null;
+  const uploaded = (x) => x && (vercelH ? x.builtAt >= vercelH.builtAt : fresh(x));
+  pagesH = await health(PAGES).catch(() => null);
+  // 올리기는 Vercel 빌드 도중이라 보통 이미 반영돼 있다 — 늦게 퍼질 때만 최대 1분 더
+  for (let i = 0; i < 2 && !uploaded(pagesH); i++) {
+    await sleep(30_000);
+    pagesH = await health(PAGES).catch(() => pagesH);
+  }
+  if (uploaded(pagesH)) pagesH = { ...pagesH, ok: true };
+  console.log(`pages: vercel builtAt=${vercelH?.builtAt ?? '?'} pages builtAt=${pagesH?.builtAt ?? '?'} ok=${Boolean(pagesH?.ok)}`);
+}
 
 const fmtDate = (s) => new Date(s * 1000).toLocaleString('ko-KR', { timeZone: 'Asia/Seoul' });
 const failed = status === 'failure' || status === 'error';
@@ -64,6 +91,33 @@ const reports = {
             '확인: Vercel 대시보드 → urnlock → Deployments 의 실패한 배포 → Build Logs. Claude 에게 로그를 보여 주면 됩니다. 지난 기록은 `docs/deploy-failures.md`.',
           ].join('\n'),
         },
+  // 배포는 성공했는데 pages.dev 가 이 빌드가 아님 — 점검 문제로 안 올렸거나(PAGES_PRIMARY=1 일 때) 올리기가 실패. 다음 배포에서 반영되면 닫힌다
+  pages:
+    !PAGES_CHECK || status !== 'success' || pagesH?.ok
+      ? null
+      : vercelH?.problems?.length
+        ? {
+            title: '[Urnlock] 데이터 점검 실패 — Pages 에 안 올림',
+            body: [
+              `Vercel 빌드(${fmtDate(vercelH.builtAt)})의 데이터 점검에 걸려 Cloudflare Pages 에는 올리지 않았습니다. Pages(${PAGES})는 직전 배포 그대로입니다${pagesH ? ` (${fmtDate(pagesH.builtAt)})` : ''}.`,
+              '',
+              '점검에 걸린 것',
+              ...vercelH.problems.map((p) => `- ${p}`),
+              '',
+              '데이터가 나아지면 다음 6시간 갱신 빌드에 저절로 올라갑니다 (수동 pages-standby 도 같은 점검에 걸리므로 돌리지 않아도 됩니다). 지난 기록은 `docs/deploy-failures.md`.',
+            ].join('\n'),
+          }
+        : {
+            title: '[Urnlock] Pages 올리기 실패',
+            body: [
+              `Vercel 운영 배포는 성공했지만 Cloudflare Pages(${PAGES})에 이 빌드가 올라가지 않았습니다${pagesH ? ` — Pages 는 ${fmtDate(pagesH.builtAt)} 빌드` : ' — Pages 의 health.json 을 읽지 못함'}.`,
+              ...(vercelH ? [] : ['', `이번 빌드의 health.json 을 찾지 못해(${ORIGIN} · www 모두) 점검 실패인지 올리기 실패인지 구분하지 못했습니다.`]),
+              ...(DEPLOY_URL ? ['', DEPLOY_URL] : []),
+              '',
+              '확인: Vercel → Deployments 의 이 배포 → Build Logs 에서 `[pages]` 줄 (토큰 만료 · 권한 · wrangler 오류).',
+              '바로 새로 하려면 Actions → **pages-standby → Run workflow** (Vercel 과 따로 빌드해 올린다). 다음 배포에서 반영되면 이 이슈는 자동으로 닫힙니다.',
+            ].join('\n'),
+          },
   untranslated:
     h && Object.values(h.untranslated ?? {}).some((n) => n > 0)
       ? {

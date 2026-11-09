@@ -6,11 +6,5 @@
  "把附近的所有敌方英雄笼罩在黑暗中，大幅限制他们看到其他单位的视野。受到作用的敌人会暂时现形，并且在持续时间内被视为落单状态。自身获得 bonus sprint speed。": "把附近的所有敌方英雄笼罩在黑暗中，大幅限制他们看到其他单位的视野。受到作用的敌人会暂时现形，并且在持续时间内被视为落单状态。自身获得额外冲刺速度。",
  "对自己造成元灵伤害，获得额外恢复和 bonus move speed，随时间衰减。": "对自己造成元灵伤害，获得额外恢复和额外移动速度，随时间衰减。",
  "烂醉时：+2.25米/秒 bonus move speed": "烂醉时：+2.25米/秒额外移动速度",
- "你的长凳伸展双腿，获得 bonus move speed、更高的跳跃、减益抗性和近战抗性。近战轻击：发动踢腿将敌人击退。近战重击：发动地面重击，施加击飞、减速，并造成元灵伤害。按住下蹲/滑行为高跳蓄力，然后释放进行跳跃。": "你的长凳伸展双腿，获得额外移动速度、更高的跳跃、减益抗性和近战抗性。近战轻击：发动踢腿将敌人击退。近战重击：发动地面重击，施加击飞、减速，并造成元灵伤害。按住下蹲/滑行为高跳蓄力，然后释放进行跳跃。",
- "Chimera Peace Bringer": "奇美拉和平使者",
- "Hold 跳跃/攀爬 to fly, building up heat. When max heat is reached, your jetpack will begin to overheat. Overheating: After a short delay, dive to the ground. Upon impact, create an explosion that deals damage and launches you and nearby enemies. If no hero is hit, you stun yourself. Press 技能 2 to dive early. Cooling Down: After overheating, the jetpack cannot be used until it fully cools down. Slows affect you while airborne. You always explode on death.": "按住 跳跃/攀爬 飞行，同时积累热量。热量达到上限时，喷气背包开始过热。过热：短暂延迟后俯冲至地面。落地时产生爆炸，造成伤害并击飞你和附近的敌人。若未命中英雄，你会眩晕自己。按 技能 2 可提前俯冲。冷却：过热后，喷气背包完全冷却前无法使用。在空中时会受到减速影响。你死亡时总会爆炸。",
- "Heat vents faster while grounded": "在地面时散热更快",
- "On Hero Hit: Heal and take no self damage": "命中英雄时：恢复生命且不受自身伤害",
- "Heal On Hit": "命中治疗",
- "Spray fuel dealing 持续武器伤害 and shredding 子弹抗性, building up to a huge backblast that deals 元灵伤害 and knocks you backwards. Vents the jetpack when dealing damage.": "喷洒燃料，造成持续武器伤害并削减子弹抗性，积累后形成巨大的反冲，造成元灵伤害并将你向后击退。造成伤害时为喷气背包散热。"
+ "你的长凳伸展双腿，获得 bonus move speed、更高的跳跃、减益抗性和近战抗性。近战轻击：发动踢腿将敌人击退。近战重击：发动地面重击，施加击飞、减速，并造成元灵伤害。按住下蹲/滑行为高跳蓄力，然后释放进行跳跃。": "你的长凳伸展双腿，获得额外移动速度、更高的跳跃、减益抗性和近战抗性。近战轻击：发动踢腿将敌人击退。近战重击：发动地面重击，施加击飞、减速，并造成元灵伤害。按住下蹲/滑行为高跳蓄力，然后释放进行跳跃。"
 }

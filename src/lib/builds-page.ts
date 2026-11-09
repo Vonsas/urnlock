@@ -6,7 +6,8 @@
 import { getHero, getHeroBuilds, getHeroes, getItems, getRanks, type AuthorStanding, type BuildPerf, type GameBuild } from '../data';
 import { LOCALE_META, localePath, useTranslations, type Locale } from '../i18n';
 import { gameImage } from './images';
-import { groupName, skillOrder } from './build-groups';
+import { groupName, shopGroups, skillOrder } from './build-groups';
+import { buildNotesFiles } from './build-notes';
 import type { BuildEntry, BuildsPageConfig } from '../scripts/builds';
 
 export async function buildsPageConfig(lang: Locale): Promise<string> {
@@ -39,9 +40,7 @@ export async function buildsPageConfig(lang: Locale): Promise<string> {
     const content = (b: GameBuild) => {
       const order = skillOrder(b.abilityOrder);
       return {
-        groups: b.groups
-          .map((g) => ({ name: groupName(g.name, t), items: g.items.map((it) => it.itemId).filter((id) => shop.has(id)) }))
-          .filter((g) => g.items.length),
+        groups: shopGroups(b.groups, (id) => shop.has(id)).map((g) => ({ name: groupName(g.name, t), items: g.items.map((it) => it.itemId) })),
         // 능력 id 가 하나라도 이 영웅 것이 아니면 스킬 순서는 싣지 않는다
         order: order.length >= 4 && order.every((id) => abilityIds.has(id)) ? order : [],
       };
@@ -53,7 +52,7 @@ export async function buildsPageConfig(lang: Locale): Promise<string> {
       ...(author && (author.rank || author.badge) && { stand: { ...(author.region && { r: author.region }), ...(author.rank && { n: author.rank }), ...(author.badge && { b: author.badge }) } }),
     });
 
-    // 추천 빌드이면서 상위권 인기 1–3위이기도 하면 한 장으로 합친다 (같은 영웅 · 같은 빌드 ID)
+    // 추천 빌드이면서 상위권 인기 1–5위이기도 하면 한 장으로 합친다 (같은 영웅 · 같은 빌드 ID)
     const byBuild = new Map<number, BuildEntry>();
     for (const p of pro) {
       if (!p.build || byBuild.has(p.buildId)) continue;
@@ -63,7 +62,6 @@ export async function buildsPageConfig(lang: Locale): Promise<string> {
         buildId: p.buildId,
         name: p.build.name,
         updatedAt: p.build.updatedAt,
-        ...(p.usage && { rank: p.usage.rank, players: p.usage.players, matches: p.usage.matches }),
         ...stats(p.perf, p.author),
         ...content(p.build),
       };
@@ -71,7 +69,7 @@ export async function buildsPageConfig(lang: Locale): Promise<string> {
       builds.push(entry);
     }
     for (const b of top) {
-      const topInfo = { topN: b.rank, players: b.players, matches: b.matches, author: b.authorName, ...(b.allRanks && { allRanks: true }), ...stats(b.perf, b.author) };
+      const topInfo = { topN: b.rank, author: b.authorName, ...(b.allRanks && { allRanks: true }), ...stats(b.perf, b.author) };
       const same = byBuild.get(b.build.buildId);
       if (same) Object.assign(same, topInfo);
       else builds.push({ hero: h.id, ...topInfo, buildId: b.build.buildId, name: b.build.name, updatedAt: b.build.updatedAt, ...content(b.build) });
@@ -107,11 +105,14 @@ export async function buildsPageConfig(lang: Locale): Promise<string> {
     heroes: heroMap,
     items: itemMap,
     patchFrom,
+    notesFiles: await buildNotesFiles(),
     builds: builds.sort((a, b) => b.updatedAt - a.updatedAt),
     t: {
       ...t.buildsPage,
       unlock: t.heroes.unlock,
       upgrade: t.heroes.upgrade,
+      tipOrder: t.heroes.tipOrder,
+      tipStep: t.heroes.tipStep,
       skillOrder: t.heroes.skillOrderTitle,
       winRate: t.heroes.buildWinRate,
       games: t.heroes.buildGames,

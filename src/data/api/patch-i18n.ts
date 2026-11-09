@@ -87,6 +87,36 @@ function withOfficialNames(tr: string | undefined, terms: string[], glossary: Gl
 
 const numbers = (text: string) => (text.match(/\d+(?:\.\d+)?/g) ?? []).sort().join(',');
 
+const MONTHS = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+/** 달 이름 → 숫자. 'March' · 'MARCH' · 'Mar' · 'MAR' (소문자 'may' 는 달이 아니다) */
+const MONTH_OF = new Map(MONTHS.flatMap((m, i) => [m, m.toUpperCase(), m.slice(0, 3), m.slice(0, 3).toUpperCase()].map((name) => [name, i + 1] as const)));
+const MONTH_NAME = [...MONTH_OF.keys()].join('|');
+const MONTH_DAY = new RegExp(`\\b(${MONTH_NAME}) (\\d{1,2})(?:st|nd|rd|th|ST|ND|RD|TH)?\\b`, 'g');
+const MONTH_WORD = new RegExp(`\\b(${MONTH_NAME})\\b( \\d{4}\\b)?`, 'g');
+/** 글자로 쓴 달 — 원문에 달 이름이 있을 때만 본다. '이월' 은 뺀다: 랭크 공지에 흔한 '이월(넘어감)' 과 같아 멀쩡한 번역이 영어로 돌아간다 */
+const LETTER_MONTH = /(?<![가-힣])(?:일|삼|사|오|유|육|칠|팔|구|시|십일|십이)월|[一二三四五六七八九十]月/;
+const monthInTr = (month: number) => new RegExp(`(?<!\\d)${month}\\s*[월月]`);
+
+/** 번역의 숫자가 원문과 같은가. 달은 번역에서 숫자로 쓴다('삼월' 은 안 됨, 2026-11-06 사용자 지적):
+ *  'March 11th' 는 '3월 11일' · '3月11日' 이어야 하고, 'March 2027' 은 '3월' 이 있어야 하며, 숫자 없이 쓴 달은 '3월' 이 있으면 뺀다 ('Forced March' 같은 이름일 수 있어 없어도 됨).
+ *  그렇게 뺀 나머지 숫자를 비교한다 — 달 숫자를 그냥 더해 비교하면 '3' 이 아무 데나 하나 더 있어도 통과했다 */
+export function sameNumbers(text: string, tr: string): boolean {
+  if (text.search(MONTH_WORD) >= 0 && LETTER_MONTH.test(tr)) return false;
+  let to = tr;
+  for (const [, name, day] of text.matchAll(MONTH_DAY)) {
+    const date = new RegExp(`${monthInTr(MONTH_OF.get(name)!).source}\\s*${day}\\s*[일日]`);
+    if (!date.test(to)) return false;
+    to = to.replace(date, '');
+  }
+  const from = text.replace(MONTH_DAY, '');
+  for (const [, name, year] of from.matchAll(MONTH_WORD)) {
+    const month = monthInTr(MONTH_OF.get(name)!);
+    if (!month.test(to) && year) return false;
+    to = to.replace(month, '');
+  }
+  return numbers(from) === numbers(to);
+}
+
 /** 언어별 번역 안 된 줄 수 — 마지막 flush 기준. /health.json 이 싣고, 매일 점검이 0 이 아니면 GitHub 이슈로 알린다 (2026-10-05) */
 export const untranslatedCounts: Partial<Record<Locale, number>> = {};
 
@@ -109,7 +139,7 @@ export function translator(lang: Locale, glossary: Glossary): Translator {
       const tr = withOfficialNames(dict[text], terms, glossary, lang);
       let problem: string | undefined;
       if (tr) {
-        if (numbers(tr) !== numbers(text)) problem = `숫자 불일치 (${numbers(text)} ≠ ${numbers(tr)})`;
+        if (!sameNumbers(text, tr)) problem = `숫자 불일치 (${numbers(text)} ≠ ${numbers(tr)})${text.search(MONTH_WORD) >= 0 ? ' — 달은 글자 말고 숫자로, 날짜는 3월 11일 · 3月11日 꼴로' : ''}`;
         else {
           const missing = terms.filter((en) => glossary.get(en)?.[lang] && !tr.includes(glossary.get(en)![lang]!));
           if (missing.length) problem = `공식 이름 없음: ${missing.map((en) => `${en} → ${glossary.get(en)![lang]}`).join(', ')}`;
@@ -135,7 +165,11 @@ const lines = (t: Translator, b: PatchBlock): PatchBlock =>
   b.type === 'group' ? { ...b, lines: b.lines.map((l) => ({ ...l, ...t.line(l.text) })) } : { ...b, ...t.line(b.text) };
 
 export function translateNotes(notes: PatchNote[], t: Translator): PatchNote[] {
-  return notes.map((n) => ({ ...n, sections: n.sections.map((s) => ({ ...s, blocks: s.blocks.map((b) => lines(t, b)) })) }));
+  return notes.map((n) => ({
+    ...n,
+    // 기타 구역 머리('Street Brawl')도 같은 사전으로
+    sections: n.sections.map((s) => ({ ...s, ...(s.heading && { heading: t.line(s.heading).text }), blocks: s.blocks.map((b) => lines(t, b)) })),
+  }));
 }
 
 /** 첫 페이지 패치 요약의 변경 줄도 같은 사전으로 */

@@ -1,5 +1,6 @@
 ---
-/** 가이드 보기 — /ko/guides/view/?id=… (주소로 공유). 글은 브라우저가 받아 그린다 (scripts/guides.ts) */
+/** 가이드 보기 — /ko/guides/view/?id=… (주소로 공유). 글은 브라우저가 받아 그린다 (scripts/guides.ts).
+ *  검색엔진엔 안 올린다 (2026-10-31): 글이 몇 편이든 정식 주소가 ?id 없는 빈 껍데기 하나라, 구글이 푸터 고지 문구를 설명으로 띄웠다. 방문 통계는 그대로 */
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import { LOCALES, toLocale, useTranslations } from '../../../i18n';
 import { guidesPageConfig } from '../../../lib/guides-page';
@@ -13,8 +14,8 @@ const t = useTranslations(lang);
 const configJson = await guidesPageConfig(lang, 'view');
 ---
 
-<BaseLayout lang={lang} title={t.nav.guides} description={t.home.sectionDesc.guides}>
-  <div data-guides-view class="pt-8"></div>
+<BaseLayout lang={lang} seoTitle={t.seo.guides} title={t.nav.guides} description={t.seo.guidesDesc} noindex analytics>
+  <div data-guides-view class="min-h-svh pt-8"></div>
   <script type="application/json" id="guides-config" set:html={configJson} />
 </BaseLayout>
 

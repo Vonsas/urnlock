@@ -1,26 +1,25 @@
 /**
  * 빌드 페이지 — 빌드 때 심은 JSON(#builds-config)으로 카드 목록을 그린다.
- * 걸러 보기: 추천 · 상위권 인기(예지자+ 1–3위 + 그 사용 순위에 드는 추천 빌드, 2026-10-03 하나로 합침) · 작성자 · 영웅, 주소(?kind=&pro=&hero=)에 남는다.
- * 최근 수정 순, 24개씩 더 보기.
+ * 걸러 보기: 작성자 · 영웅 · 정렬, 주소(?pro=&hero=&sort=)에 남는다. 추천과 상위권 인기는 한 목록 (2026-11-08 사용자: 종류 버튼 뺌).
+ * 전체 목록은 최근 수정 순, 영웅을 고르면 추천이면서 상위권 인기 → 판수 순. 24개씩 더 보기.
  * 카드마다 빌드 ID 복사 버튼, 카드를 누르면 작은 창(<dialog>)에 아이템 묶음 전체와 스킬 순서. 주소 ?build=ID 로 바로 열린다.
  * 빌드 이름·작성자 이름은 외부 글이라 textContent 로만 넣는다.
  */
 import type { Dictionary } from '../i18n';
+import { tipAttr } from '../lib/tip';
+import type { BuildNotes } from '../lib/build-notes';
 
 /**
  * 빌드 카드 하나. pro = 추천 작성자 이름 (없으면 추천 빌드가 아님).
- * rank = 예지자+ 사용 순위 안에 있을 때 (추천 빌드의 '상위권 인기'), topN = 상위권 인기 1–3위 (author = 그 빌드 작성자 Steam 이름)
+ * topN = 상위권 인기 1–5위 (author = 그 빌드 작성자 Steam 이름)
  */
 export interface BuildEntry {
   hero: number;
   pro?: string;
-  rank?: number;
   topN?: number;
   /** 상위권 인기 대신 전체 랭크 인기 (막 나온 영웅) */
   allRanks?: boolean;
   author?: string;
-  players?: number;
-  matches?: number;
   buildId: number;
   name: string;
   updatedAt: number;
@@ -43,10 +42,14 @@ export interface BuildsPageConfig {
   items: Record<number, { name: string; cat: 'weapon' | 'spirit' | 'vitality'; tier: number; icon?: string }>;
   /** 현재 패치 시작 — 그 전에 수정된 빌드는 '이전 패치' */
   patchFrom?: number;
+  /** 영웅 id → 작성자 설명 파일 — 그 영웅 빌드 창을 처음 열 때 받는다 (lib/build-notes.ts) */
+  notesFiles: Record<number, string>;
   builds: BuildEntry[];
   t: Dictionary['buildsPage'] & {
     unlock: string;
     upgrade: string;
+    tipOrder: string;
+    tipStep: string;
     skillOrder: string;
     winRate: string;
     games: string;
@@ -134,12 +137,12 @@ if (configEl && root) {
   const titleLine = (b: BuildEntry, cls: string, withStanding = true) => {
     // 좁은 칸에선 이름을 자르지 않고 배지를 다음 줄로 (이름이 'D..' 로 잘리던 문제)
     const title = el('p', `flex min-w-0 flex-wrap items-baseline gap-x-1.5 font-bold tracking-tight text-paper-50 ${cls}`);
-    // 배지는 상자 없이 작은 글자 — '추천' 보기에선 모든 카드가 추천이라 '추천' 표시는 생략 (2026-10-23)
+    // 배지는 상자 없이 작은 글자 — 추천과 상위권 인기가 한 목록에 있으니 언제나 표시
     if (b.pro) {
-      if (state.kind !== 'all') title.append(el('span', 'flex-none text-2xs font-semibold text-paper-400', t.badge));
+      title.append(el('span', 'flex-none text-2xs font-semibold text-paper-400', t.badge));
       title.append(el('span', 'max-w-full shrink-0 truncate', b.pro));
     }
-    if (b.topN || b.rank) title.append(el('span', 'flex-none text-2xs font-semibold text-copper-400', b.allRanks ? t.popularLabel : t.topLabel));
+    if (b.topN) title.append(el('span', 'flex-none text-2xs font-semibold text-copper-400', b.allRanks ? t.popularLabel : t.topLabel));
     // 추천이 아닌 상위권 인기 빌드는 작성자 이름을 제목으로
     if (!b.pro && b.author) title.append(el('span', 'max-w-full shrink-0 truncate', b.author));
     const stand = withStanding && standing(b);
@@ -205,13 +208,12 @@ if (configEl && root) {
   // 상태 — 주소에서 시작
   const params = new URLSearchParams(location.search);
   const state = {
-    // 예전 주소 ?kind=rank(초월자+ 인기) 도 상위권 인기로
-    kind: (['top', 'rank'].includes(params.get('kind') ?? '') ? 'top' : 'all') as 'all' | 'top',
     pro: params.get('pro') ?? '',
     hero: Object.values(cfg.heroes).some((h) => h.slug === params.get('hero')) ? params.get('hero')! : '',
     shown: PAGE,
     open: Number(params.get('build')) || 0,
-    sort: (['games', 'win'].includes(params.get('sort') ?? '') ? params.get('sort') : 'new') as 'new' | 'games' | 'win',
+    // 직접 고른 정렬. 안 골랐으면 undefined — 영웅을 골랐을 땐 기본 순서(best), 전체 목록은 최근 수정
+    sort: (['new', 'games', 'win'].includes(params.get('sort') ?? '') ? params.get('sort') : undefined) as 'new' | 'games' | 'win' | undefined,
   };
   const heroIdBySlug = new Map(Object.entries(cfg.heroes).map(([id, h]) => [h.slug, Number(id)]));
   const pros = [...new Set(cfg.builds.flatMap((b) => (b.pro ? [b.pro] : [])))].sort((a, b) => a.localeCompare(b));
@@ -219,10 +221,9 @@ if (configEl && root) {
 
   const syncUrl = () => {
     const q = new URLSearchParams();
-    if (state.kind !== 'all') q.set('kind', state.kind);
     if (state.pro) q.set('pro', state.pro);
     if (state.hero) q.set('hero', state.hero);
-    if (state.sort !== 'new') q.set('sort', state.sort);
+    if (state.sort) q.set('sort', state.sort);
     if (state.open) q.set('build', String(state.open));
     const qs = q.toString();
     history.replaceState(null, '', `${location.pathname}${qs ? `?${qs}` : ''}`);
@@ -265,13 +266,50 @@ if (configEl && root) {
         if (id !== a.id) return;
         const mark = el('span', nth[i] === 0 ? 'st-mark st-unlock' : 'st-mark', nth[i] === 0 ? '' : String(COST[nth[i]]));
         mark.style.gridColumn = String(i + 1);
-        mark.title = `${i + 1} · ${a.name} ${nth[i] === 0 ? t.unlock : `${t.upgrade} ${nth[i]}`}`;
+        // 칸 툴팁 표 — 영웅 빌드 탭(SkillTrack.astro)과 같은 내용
+        mark.setAttribute('data-tip-rows', tipAttr({ h: a.name, rows: [[t.tipOrder, String(i + 1)], [t.tipStep, nth[i] === 0 ? t.unlock : `${t.upgrade} ${nth[i]}`]] }));
         line.append(mark);
       });
       row.append(icon, line);
       track.append(row);
     }
     return track;
+  };
+
+  // 작성자 설명 — 영웅마다 파일 하나, 그 영웅 빌드 창을 처음 열 때 한 번만 받는다. 실패하면(배포로 옛 파일이 사라진 경우 등) 설명 없이 그대로 둔다
+  const notesByHero = new Map<number, Promise<BuildNotes | null>>();
+  const loadNotes = (heroId: number) => {
+    const file = cfg.notesFiles[heroId];
+    if (!file) return Promise.resolve(null);
+    let got = notesByHero.get(heroId);
+    if (!got) {
+      got = fetch(file)
+        .then((r) => (r.ok ? (r.json() as Promise<BuildNotes>) : null))
+        .catch(() => null);
+      notesByHero.set(heroId, got);
+    }
+    return got;
+  };
+
+  /** 그린 묶음에 설명을 붙인다 — 묶음 설명은 이름 아래 글로, 아이템 설명은 점 표시 + 툴팁 (외부 글이라 textContent · 속성으로만) */
+  const applyNotes = (b: BuildEntry, sections: Array<{ title: HTMLElement; items: HTMLElement[] }>, all: BuildNotes) => {
+    all[b.buildId]?.forEach((g, i) => {
+      const sec = sections[i];
+      if (!g || !sec) return;
+      if (g.d) sec.title.after(el('p', 'pb-2 text-xs leading-relaxed break-words whitespace-pre-line text-paper-200', g.d));
+      for (const [no, note] of Object.entries(g.n ?? {})) {
+        const li = sec.items[Number(no)];
+        if (!li) continue;
+        const box = li.querySelector('[data-note-icon]');
+        const name = cfg.items[b.groups[i].items[Number(no)]]?.name ?? '';
+        // 안쪽 아이콘의 이름 툴팁이 먼저 잡히지 않게 지운다 (이미 마우스를 올렸으면 data-tip 으로 옮겨 가 있다)
+        for (const attr of ['title', 'data-tip', 'data-tip-delay']) box?.firstElementChild?.removeAttribute(attr);
+        li.dataset.tip = `${name}\n${note}`;
+        li.tabIndex = 0;
+        box?.append(el('span', 'note-dot'));
+        li.append(el('span', 'sr-only', note));
+      }
+    });
   };
 
   const openBuild = (b: BuildEntry) => {
@@ -300,13 +338,21 @@ if (configEl && root) {
 
     const main = el('div', 'grid grid-cols-[minmax(0,1fr)] gap-5 px-5 py-4');
     const groups = el('div', 'grid grid-cols-[minmax(0,1fr)] gap-3 sm:grid-cols-[repeat(2,minmax(0,1fr))]');
+    const sections: Array<{ title: HTMLElement; items: HTMLElement[] }> = [];
     for (const g of b.groups) {
       const sec = el('section', 'rounded-sm bg-ink-900 p-2.5');
-      sec.append(el('h3', 'truncate pb-2 text-xs font-semibold text-paper-400', g.name || '—'));
+      const title = el('h3', 'truncate pb-2 text-xs font-semibold text-paper-400', g.name || '—');
+      const lis: HTMLElement[] = [];
+      sections.push({ title, items: lis });
+      sec.append(title);
       const list = el('ul', 'grid grid-cols-[repeat(auto-fill,minmax(3.5rem,1fr))] gap-2');
       for (const id of g.items) {
         const li = el('li', 'flex flex-col items-center gap-1 text-center');
-        li.append(itemIcon(id, 'size-10'), el('span', 'line-clamp-2 text-[0.625rem] leading-tight text-paper-200', cfg.items[id]?.name ?? ''));
+        const icon = el('span', 'relative block');
+        icon.dataset.noteIcon = '';
+        icon.append(itemIcon(id, 'size-10'));
+        li.append(icon, el('span', 'line-clamp-2 text-[0.625rem] leading-tight text-paper-200', cfg.items[id]?.name ?? ''));
+        lis.push(li);
         list.append(li);
       }
       sec.append(list);
@@ -321,7 +367,7 @@ if (configEl && root) {
     }
     const foot = el('p', 'flex flex-wrap items-center justify-between gap-2 text-xs text-paper-500');
     const link = el('a', 'font-semibold text-brass-400 hover:text-brass-200', `${t.openHero} →`);
-    // 상위권 인기 1–3위는 작성자가 추천 명단에 없을 수 있다 → top:순위 (pro:undefined 로 가면 다른 빌드가 열렸다)
+    // 상위권 인기 1–5위는 작성자가 추천 명단에 없을 수 있다 → top:순위 (pro:undefined 로 가면 다른 빌드가 열렸다)
     link.href = `${cfg.heroPath}${hero.slug}/?build=${encodeURIComponent(b.pro ? `pro:${b.pro}` : `top:${b.topN}`)}#build`;
     foot.append(el('span', '', t.copyHint), link);
     main.append(foot);
@@ -331,29 +377,14 @@ if (configEl && root) {
     state.open = b.buildId;
     syncUrl();
     if (!dialog.open) dialog.showModal();
+    // 창은 바로 뜨고 설명은 도착하면 붙는다. 그사이 다른 빌드로 바뀌었으면(이 창의 묶음이 화면에 없으면) 붙이지 않는다
+    void loadNotes(b.hero).then((all) => {
+      if (all && main.isConnected) applyNotes(b, sections, all);
+    });
   };
 
   // ─── 도구 막대 ────────────────────────────────────────────────
   const bar = el('div', 'flex flex-wrap items-center gap-3');
-  const seg = el('div', 'seg');
-  seg.setAttribute('role', 'group');
-  seg.setAttribute('aria-label', t.kindLabel);
-  const kinds = [
-    ['all', t.kindAll],
-    ['top', t.kindTop],
-  ] as const;
-  const kindButtons = kinds.map(([key, label]) => {
-    const b = el('button', '', label);
-    b.type = 'button';
-    b.addEventListener('click', () => {
-      state.kind = key;
-      state.shown = PAGE;
-      render();
-    });
-    seg.append(b);
-    return [key, b] as const;
-  });
-
   const select = el('select', 'field w-auto min-w-40');
   select.setAttribute('aria-label', t.proLabel);
   select.append(new Option(t.allPros, ''));
@@ -377,7 +408,8 @@ if (configEl && root) {
     const b = el('button', '', label);
     b.type = 'button';
     b.addEventListener('click', () => {
-      state.sort = key;
+      // 눌린 버튼을 다시 누르면 해제 — 영웅을 고른 기본 순서로 돌아갈 수 있게
+      state.sort = state.sort === key ? undefined : key;
       state.shown = PAGE;
       render();
     });
@@ -385,10 +417,10 @@ if (configEl && root) {
     return [key, b] as const;
   });
   const count = el('span', 'ml-auto text-xs text-paper-400 tabular-nums');
-  bar.append(seg, select, sortSeg, count);
+  bar.append(select, sortSeg, count);
 
-  // 영웅 고르기 — 모바일은 한 줄 가로 스크롤, 넓은 화면은 줄바꿈
-  const strip = el('div', '-mx-4 mt-2 flex gap-1.5 overflow-x-auto px-4 py-1 [scrollbar-width:none] sm:-mx-1 sm:flex-wrap sm:px-1 [&::-webkit-scrollbar]:hidden');
+  // 영웅 고르기 — 줄바꿈 (모바일도 — 한 줄 가로 스크롤은 찾기 불편하다는 사용자 의견, 2026-11-03). 모바일은 초상을 조금 작게
+  const strip = el('div', '-mx-1 mt-2 flex flex-wrap gap-1 px-1 py-1 sm:gap-1.5');
   strip.setAttribute('role', 'group');
   strip.setAttribute('aria-label', t.heroLabel);
   const allBtn = el('button', '', t.allHeroes);
@@ -402,7 +434,7 @@ if (configEl && root) {
   const heroButtons = Object.values(cfg.heroes)
     .sort((a, b) => a.name.localeCompare(b.name, cfg.locale))
     .map((h) => {
-      const b = el('button', 'grid size-10 flex-none place-items-center overflow-hidden rounded-sm bg-ink-850');
+      const b = el('button', 'grid size-8 flex-none place-items-center overflow-hidden rounded-sm bg-ink-850 sm:size-10');
       b.type = 'button';
       b.title = h.name;
       b.setAttribute('aria-label', h.name);
@@ -461,25 +493,35 @@ if (configEl && root) {
   };
 
   // ─── 그리기 ───────────────────────────────────────────────────
+  // 순서는 종류마다 처음 한 번만 계산해 두고, 그릴 때는 거르기만 한다 (cfg.builds 는 이미 최근 수정 순)
+  const gamesOf = (b: BuildEntry) => b.perf?.[0] ?? 0;
+  const winOf = (b: BuildEntry) => (b.perf && b.perf[0] >= MIN_GAMES ? b.perf[1] / b.perf[0] : -1);
+  const groupOf = (b: BuildEntry) => (b.pro && b.topN ? 0 : gamesOf(b) >= MIN_GAMES ? 1 : 2);
+  const compare = {
+    games: (a: BuildEntry, b: BuildEntry) => gamesOf(b) - gamesOf(a),
+    win: (a: BuildEntry, b: BuildEntry) => winOf(b) - winOf(a),
+    // 영웅을 골랐을 때의 기본 순서 (정렬을 직접 고르면 그 정렬) — 추천이면서 상위권 인기 → 나머지 판수 순 → 100판 미만은 최근 수정 순 (2026-11-08 사용자)
+    best: (a: BuildEntry, b: BuildEntry) => groupOf(a) - groupOf(b) || (groupOf(a) === 2 ? b.updatedAt - a.updatedAt : gamesOf(b) - gamesOf(a)),
+  };
+  const orders = new Map<keyof typeof compare, BuildEntry[]>();
+  const ordered = (key: keyof typeof compare | 'new') => {
+    if (key === 'new') return cfg.builds;
+    let list = orders.get(key);
+    if (!list) orders.set(key, (list = [...cfg.builds].sort(compare[key])));
+    return list;
+  };
+
   const render = () => {
     const heroId = state.hero ? heroIdBySlug.get(state.hero) : undefined;
-    const kindAndPro = cfg.builds.filter(
-      (b) =>
-        (state.kind === 'all' ? Boolean(b.pro) : Boolean(b.topN || (b.pro && b.rank))) &&
-        (!state.pro || b.pro === state.pro),
+    const key = state.sort ?? (heroId !== undefined ? 'best' : 'new');
+    const list = ordered(key).filter(
+      (b) => (!state.pro || b.pro === state.pro) && (heroId === undefined || b.hero === heroId),
     );
-    const winOf = (b: BuildEntry) => (b.perf && b.perf[0] >= MIN_GAMES ? b.perf[1] / b.perf[0] : -1);
-    const list = kindAndPro
-      .filter((b) => heroId === undefined || b.hero === heroId)
-      .sort((a, b) =>
-        state.sort === 'games' ? (b.perf?.[0] ?? 0) - (a.perf?.[0] ?? 0) : state.sort === 'win' ? winOf(b) - winOf(a) : b.updatedAt - a.updatedAt,
-      );
-    // 지금 조건(종류 · 작성자)에 빌드가 없는 영웅은 흐리게
-    const heroesWithBuilds = new Set(kindAndPro.map((b) => b.hero));
-    for (const [key, b] of kindButtons) b.setAttribute('aria-pressed', String(state.kind === key));
-    for (const [key, b] of sortButtons) b.setAttribute('aria-pressed', String(state.sort === key));
+    // 지금 작성자 조건에 빌드가 없는 영웅은 흐리게
+    const heroesWithBuilds = new Set((state.pro ? cfg.builds.filter((b) => b.pro === state.pro) : cfg.builds).map((b) => b.hero));
+    for (const [k, b] of sortButtons) b.setAttribute('aria-pressed', String(key === k));
     select.value = state.pro;
-    allBtn.className = `h-10 flex-none rounded-sm px-3 text-sm whitespace-nowrap ${state.hero ? 'bg-ink-850 text-paper-400 hover:text-paper-50' : 'bg-brass-400 font-semibold text-ink-950'}`;
+    allBtn.className = `h-8 flex-none rounded-sm px-2.5 text-xs whitespace-nowrap sm:h-10 sm:px-3 sm:text-sm ${state.hero ? 'bg-ink-850 text-paper-400 hover:text-paper-50' : 'bg-brass-400 font-semibold text-ink-950'}`;
     for (const [slug, b] of heroButtons) {
       b.classList.toggle('ring-2', slug === state.hero);
       b.classList.toggle('ring-brass-400', slug === state.hero);
@@ -488,6 +530,8 @@ if (configEl && root) {
     }
     count.textContent = fmt(t.count, { n: num.format(list.length) });
     grid.replaceChildren(...list.slice(0, state.shown).map(card));
+    // 페이지가 잡아 둔 한 화면 높이(화면 밀림 방지)는 첫 그리기에서 푼다
+    root!.classList.remove('min-h-svh');
     empty.hidden = list.length > 0;
     more.hidden = list.length <= state.shown;
     syncUrl();

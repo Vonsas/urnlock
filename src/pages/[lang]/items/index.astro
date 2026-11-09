@@ -3,8 +3,9 @@ import BaseLayout from '../../../layouts/BaseLayout.astro';
 import PageHead from '../../../components/PageHead.astro';
 import ShopItem, { type ShopLookupEntry } from '../../../components/ShopItem.astro';
 import { gameImage } from '../../../lib/images';
-import { LOCALES, toLocale, useTranslations } from '../../../i18n';
-import { getItems, ITEM_CATEGORIES, ITEM_TIERS, tierCost } from '../../../data';
+import { LOCALES, LOCALE_META, localePath, toLocale, useTranslations } from '../../../i18n';
+import { getHeroes, getItems, getItemTopHeroes, ITEM_CATEGORIES, ITEM_TIERS, tierCost } from '../../../data';
+import type { ItemHeroesConfig } from '../../../scripts/item-top-heroes';
 import { fill, formatNumber } from '../../../lib/format';
 
 export function getStaticPaths() {
@@ -18,6 +19,38 @@ const enName = new Map(enItems.map((i) => [i.slug, i.name]));
 // 카드·툴팁·하위 아이템 칩이 같은 그림 파일(168px)을 쓰도록 한 번만 만든다
 const srcs = await Promise.all(items.map((i) => gameImage(i.image, 168, 168)));
 const lookup = new Map<string, ShopLookupEntry>(items.map((i, n) => [i.slug, { name: i.name, src: srcs[n], category: i.category }]));
+
+// 상세 창 '통계' 탭(많이 산 영웅 3명 + 평균 구매 시각 · 되판 비율) — 숫자까지 여기에 함께 심는다 (따로 받는 파일 없음, 압축 약 7KB)
+const [topHeroes, heroes] = await Promise.all([getItemTopHeroes(), getHeroes(lang)]);
+const heroesConfig: ItemHeroesConfig | null = topHeroes
+  ? {
+      locale: LOCALE_META[lang].htmlLang,
+      heroPath: localePath(lang, 'heroes'),
+      heroes: {},
+      top: topHeroes,
+      t: {
+        title: t.itemStats.heroesTitle,
+        hint: t.itemStats.heroesHint,
+        share: t.itemStats.heroShare,
+        winRate: t.itemStats.winRate,
+        matches: t.itemStats.matches,
+        buyTime: t.itemStats.buyTime,
+        buyTimeValue: t.itemStats.buyTimeValue,
+        sold: t.itemStats.sold,
+        soldHint: t.itemStats.soldHint,
+      },
+    }
+  : null;
+if (heroesConfig) {
+  // 세 영웅 안에 한 번이라도 나오는 영웅만
+  const used = new Set(Object.values(topHeroes!).flatMap((x) => x.h.map(([id]) => id)));
+  await Promise.all(
+    heroes
+      .filter((h) => h.id !== undefined && used.has(h.id))
+      .map(async (h) => (heroesConfig.heroes[h.id!] = { name: h.name, slug: h.slug, icon: await gameImage(h.image?.small, 128, 128) })),
+  );
+}
+const heroesConfigJson = heroesConfig ? JSON.stringify(heroesConfig).replace(/</g, '\\u003c') : '';
 
 // 게임 상점: 탭은 분류 원색, 판은 분류별 탁한 색, 4티어 칸만 어두운 색 (Tailwind 가 찾도록 정적 문자열)
 const tabBg = { weapon: 'bg-weapon', vitality: 'bg-vitality', spirit: 'bg-spirit' } as const;
@@ -130,7 +163,7 @@ import SoulIcon from '../../../components/SoulIcon.astro';
                             {fill(t.items.tier, { n: tier })}
                           </span>
                         </p>
-                        <ul class="grid grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] gap-1.5">
+                        <ul class="grid grid-cols-5 gap-1 sm:grid-cols-[repeat(auto-fill,minmax(4.5rem,1fr))] sm:gap-1.5">
                           {tierItems.map((i) => (
                             <ShopItem item={i} lang={lang} lookup={lookup} alt={enName.get(i.slug)} dark={dark} />
                           ))}
@@ -166,9 +199,13 @@ import SoulIcon from '../../../components/SoulIcon.astro';
   <dialog
     id="item-dialog"
     aria-label={t.items.title}
+    data-tabs-label={t.itemStats.detailTabs}
+    data-tab-info={t.itemStats.tabInfo}
+    data-tab-stats={t.itemStats.tabStats}
     class="m-auto w-[min(32rem,calc(100vw-1.5rem))] overflow-hidden rounded-lg border border-line-strong bg-ink-850 p-0 text-paper-50 shadow-[0_24px_64px_rgb(0_0_0/0.6)] backdrop:bg-black/65"
   >
     <!-- 끝까지 스크롤해도 뒤 페이지로 넘어가지 않게 (overscroll-contain) -->
+    {heroesConfigJson && <script type="application/json" id="item-heroes-config" set:html={heroesConfigJson} />}
     <div data-dialog-body class="max-h-[85dvh] overflow-y-auto overscroll-contain"></div>
     <button
       type="button"
@@ -183,6 +220,7 @@ import SoulIcon from '../../../components/SoulIcon.astro';
 
 <script>
   import '../../../scripts/filters.ts';
+  import { itemHeroesAvailable, renderItemTopHeroes } from '../../../scripts/item-top-heroes.ts';
 
   // 분류 탭 — 주소의 #cat-weapon 이나 아이템 slug(#extended-magazine)로 해당 분류를 연다
   const root = document.querySelector<HTMLElement>('[data-item-tabs]');
@@ -249,11 +287,52 @@ import SoulIcon from '../../../components/SoulIcon.astro';
 
     // 상세 창 — 카드·하위/상위 아이템 칩(data-open-item)을 누르면 열고, 주소를 #아이템 으로 바꿔 공유할 수 있게 한다
     const dialog = document.getElementById('item-dialog') as HTMLDialogElement | null;
+    const detailTabsLabel = dialog?.dataset.tabsLabel ?? '';
+    const tabLabels = { info: dialog?.dataset.tabInfo ?? '', stats: dialog?.dataset.tabStats ?? '' };
     const dialogBody = dialog?.querySelector<HTMLElement>('[data-dialog-body]');
+    // [정보 | 통계] — 고른 탭은 다른 아이템으로 바꿔도 유지. 주소에 ?view=stats 가 있으면 통계부터 (공유 링크용)
+    let detailTab: 'info' | 'stats' = new URLSearchParams(location.search).get('view') === 'stats' ? 'stats' : 'info';
     const openItem = (slug: string, updateHash = true) => {
       const tpl = document.querySelector<HTMLTemplateElement>(`template[data-item-detail="${CSS.escape(slug)}"]`);
       if (!dialog || !dialogBody || !tpl) return;
       dialogBody.replaceChildren(tpl.content.cloneNode(true));
+      const id = tpl.dataset.itemId;
+      const head = dialogBody.querySelector<HTMLElement>('[data-detail-head]');
+      if (id && head && itemHeroesAvailable(Number(id))) {
+        // 머리 아래를 정보 칸으로 묶고, 그 위에 탭 줄 · 옆에 통계(많이 산 영웅 3명) 칸
+        const info = document.createElement('div');
+        while (head.nextSibling) info.append(head.nextSibling);
+        const stats = document.createElement('div');
+        const bar = document.createElement('div');
+        // 가격 줄 오른쪽 끝 — 오른쪽 가장자리를 닫기 단추(×)와 맞춘다 (머리의 오른쪽 여백 pr-14 − 단추 자리 right-3 = 44px, 2026-11-04 사용자: 소울과 같은 줄 오른쪽 위로).
+        // 좁아서 안 들어가면 다음 줄 오른쪽으로 내려간다 (flex-wrap)
+        bar.className = 'seg ml-auto -mr-11 p-0.5';
+        bar.setAttribute('role', 'group');
+        bar.setAttribute('aria-label', detailTabsLabel);
+        const show = (tab: 'info' | 'stats') => {
+          detailTab = tab;
+          info.hidden = tab !== 'info';
+          stats.hidden = tab !== 'stats';
+          for (const b of bar.children) b.setAttribute('aria-pressed', String((b as HTMLElement).dataset.tab === tab));
+          if (tab === 'stats' && !stats.childElementCount) renderItemTopHeroes(stats, Number(id));
+        };
+        for (const [tab, label] of [['info', tabLabels.info], ['stats', tabLabels.stats]] as const) {
+          const b = document.createElement('button');
+          b.type = 'button';
+          // 가격 줄 높이에 맞춘 작은 단추
+          b.className = 'h-6! px-2.5! text-xs!';
+          b.dataset.tab = tab;
+          b.textContent = label;
+          b.addEventListener('click', () => show(tab));
+          bar.append(b);
+        }
+        const costRow = head.querySelector<HTMLElement>('[data-detail-cost]');
+        if (costRow) {
+          costRow.append(bar);
+          head.after(info, stats);
+        } else head.after(bar, info, stats);
+        show(detailTab);
+      }
       dialogBody.scrollTop = 0;
       if (!dialog.open) dialog.showModal();
       if (updateHash) history.replaceState(null, '', `#${slug}`);

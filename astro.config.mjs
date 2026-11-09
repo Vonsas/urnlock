@@ -9,6 +9,8 @@ export default defineConfig({
   // 예전 주소 — 승률표가 티어 페이지 탭이던 때 (2026-10-03 상단 메뉴 '통계' 로 이동)
   redirects: {
     '/[lang]/tiers/stats': '/[lang]/stats',
+    // 아이템 통계 페이지(2026-11-04 하루)는 아이템 상세 창 '통계' 탭으로 옮겼다
+    '/[lang]/items/stats': '/[lang]/items',
   },
   // 사이트 주소 (hreflang / canonical). SITE_URL 이 있으면 그것(도메인을 연결하면 Vercel 환경 변수로),
   // 없으면 Vercel 이 빌드 때 주는 정식 주소(VERCEL_PROJECT_PRODUCTION_URL), 로컬에선 비워 둔다
@@ -17,12 +19,8 @@ export default defineConfig({
   // 2026-10-06 도메인 urnlock.com 구매(가비아, 만기 2027-10-06) → 정식 주소 www.urnlock.com (Vercel 권장대로 urnlock.com 은 www 로 308).
   site: process.env.SITE_URL ?? (process.env.VERCEL ? 'https://www.urnlock.com' : undefined),
 
-  // 2026-10-29 Vercel 무료 한도(CDN 요청 월 100만 건) 절약 — 빌드 파일(/_astro: JS · CSS · 폰트 · 이미지)은
-  // Cloudflare 캐시를 거치는 static.urnlock.com 에서 받는다. HTML · /data · /api 는 그대로 www 에서.
-  // 프로덕션 배포에서만 켠다 (미리보기 배포의 새 파일은 static 주소에 없다). CSP · CORS 는 vercel.json.
-  build: {
-    assetsPrefix: process.env.VERCEL_ENV === 'production' ? 'https://static.urnlock.com' : undefined,
-  },
+  // 빌드 파일(/_astro)은 페이지와 같은 주소에서 받는다. 2026-10-29 – 11-01 엔 Vercel 한도 절약으로 프로덕션 빌드만
+  // static.urnlock.com(Cloudflare 캐시를 거친 Vercel)에서 받았다 — www 가 Cloudflare Pages 로 넘어가며(#55) 껐다.
 
   i18n: {
     locales: [...LOCALES],

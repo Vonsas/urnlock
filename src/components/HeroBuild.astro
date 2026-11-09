@@ -46,7 +46,7 @@ const clock = (s: number) => {
 };
 ---
 
-<div class="grid grid-cols-[minmax(0,1fr)] gap-4">
+<div class="sheet-stack">
   {
     orderOk && (
       <Panel title={t.heroes.skillOrderTitle} bodyClass="px-4 pb-4">
@@ -88,5 +88,5 @@ const clock = (s: number) => {
     )
   }
 
-  {!orderOk && phases.length === 0 && <p class="text-paper-400">{t.heroes.noInsights}</p>}
+  {!orderOk && phases.length === 0 && <p class="p-4 text-paper-400">{t.heroes.noInsights}</p>}
 </div>

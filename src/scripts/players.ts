@@ -6,23 +6,38 @@
  *   ?id=계정ID   플레이어: 랭크, 요약, 최근 매치, 영웅별 기록 (전체 / 랭크 / 일반 으로 나눠 보기)
  *   ?match=ID&from=계정ID   매치 상세: 두 팀 12명의 K/D/A·소울·피해·최종 아이템 (from 플레이어 강조)
  *
+ * 영웅 순위표 페이지(/players/heroes/?hero=slug&region=, 2026-11-04 사용자: 순위표와 아예 다른 페이지로)도 이 스크립트 — config.board = 'hero'.
+ * 검색창이 없고, 줄을 누르면 전적 페이지로 넘어간다.
+ *
  * 검색창에 계정 ID(숫자), SteamID64(7656…), 프로필 주소를 넣으면 곧바로 플레이어로 간다.
  * 사용자 이름 등 API 값은 모두 textContent 로만 넣는다 (HTML 로 해석하지 않음).
  */
 import type { Dictionary } from '../i18n';
 import { parsePlayerInput } from './steam-id';
+import { tipAttr, tipText, type TipSpec } from '../lib/tip';
+import { fitCandidates, shownBadge, type RankRow } from '../lib/leaderboard-rules';
 
 export interface PlayerPageConfig {
   api: string;
   /** Intl 용 언어 태그 (ko, en, zh-CN) */
   locale: string;
-  /** 영웅 상세 링크 앞부분 (/ko/heroes/) */
-  heroPath: string;
   heroes: Record<number, { name: string; slug: string; icon?: string }>;
   /** 상점 아이템 (id → 이름·분류·아이콘) — 매치 상세의 최종 아이템 */
   items: Record<number, { name: string; category: 'weapon' | 'vitality' | 'spirit'; icon?: string }>;
   ranks: Record<number, { name: string; icon?: string }>;
+  /** 순위표 덧붙임 정보 파일 주소 (지역 → /data/leaderboard-….json) — 빌드 때 못 받았으면 없음 */
+  leaderboard?: Partial<Record<Region, string>>;
+  /** 'hero' = 영웅 순위표 페이지 */
+  board?: 'hero';
+  /** 전적 페이지 (/ko/players/) · 영웅 순위표 페이지 (/ko/players/heroes/) */
+  playersPath: string;
+  heroBoardPath: string;
   t: Dictionary['players'] & { souls: string };
+}
+/** 빌드 때 정한 순위표 계정 · 프로필 사진 · 주 영웅 (src/data/api/leaderboard.ts) */
+interface LeaderboardInfo {
+  names: Record<string, number>;
+  accounts: Record<string, { a?: string; b?: number; h: number[] }>;
 }
 
 interface SteamProfile {
@@ -122,12 +137,23 @@ interface LeaderboardEntry {
 }
 /** 순위표에서 같은 이름 후보가 이보다 많으면 계정 찾기를 하지 않고 이름 검색으로 (주소가 너무 길어지고 흔한 이름은 맞힐 수 없다) */
 const CANDIDATES_MAX = 150;
-const REGIONS = ['Asia', 'Europe', 'NAmerica', 'SAmerica', 'Oceania'] as const;
+/** 유저 수 순 (2026-11-04 사용자: 아시아를 맨 앞에 두지 말고). 처음 여는 지역 = 맨 앞 */
+const REGIONS = ['Europe', 'NAmerica', 'Asia', 'SAmerica', 'Oceania'] as const;
 type Region = (typeof REGIONS)[number];
-const LB_PAGE = 50;
+/** 휘장 하위 등급 1–6 */
+const ROMAN = ['I', 'II', 'III', 'IV', 'V', 'VI'];
+/** 순위표는 지역마다 100위까지 (2026-11-02 사용자) */
+const LB_SIZE = 100;
+const AVATAR_HASH = /^[0-9a-f]{40}$/;
+/** 영웅 순위표에서 브라우저가 계정을 골라 볼 이름의 후보 수 한도 (그보다 흔한 이름은 '식별불가' — 랭크 요청 주소가 너무 길어진다) */
+const HERO_LB_CANDIDATES = 20;
+/** 영웅 순위표의 랭크 · 프로필 응답을 다시 쓰는 시간 */
+const HERO_LB_TTL = 10 * 60_000;
 
 const PAGE_SIZE = 20;
 const HERO_PAGE = 10;
+/** 일반 매치의 평균 랭크는 2026-07-30 경기까지만 있다 (그 뒤 API 가 랭크 매치에만 준다) — 일반 MMR 칸은 이 시각 전 경기로 */
+const NORMAL_BADGE_UNTIL = Date.UTC(2026, 6, 31) / 1000;
 const RANKED = 4;
 const UNRANKED = 1;
 const NORMAL_GAME = 1;
@@ -138,16 +164,22 @@ const configEl = document.getElementById('player-config');
 const form = document.querySelector<HTMLFormElement>('[data-player-search]');
 const view = document.querySelector<HTMLElement>('[data-player-view]');
 
-if (configEl && form && view) {
+if (configEl && view) {
   const cfg = JSON.parse(configEl.textContent ?? '{}') as PlayerPageConfig;
   const t = cfg.t;
-  const input = form.querySelector<HTMLInputElement>('input[name="q"]')!;
+  const heroPage = cfg.board === 'hero';
+  // 영웅 순위표 페이지엔 검색창이 없다
+  const input = form?.querySelector<HTMLInputElement>('input[name="q"]') ?? { value: '' };
   const nf = new Intl.NumberFormat(cfg.locale, { maximumFractionDigits: 1 });
   const nf0 = new Intl.NumberFormat(cfg.locale, { maximumFractionDigits: 0 });
   const rtf = new Intl.RelativeTimeFormat(cfg.locale, { numeric: 'auto' });
   let request = 0; // 늦게 도착한 이전 요청 결과를 버리기 위한 번호
   /** 매치 평균 랭크 · MVP 를 아직 받는 중이면, 도착했을 때 다시 그릴 칸들 (다 받으면 null). final = 전체(limit 1000)가 왔을 때 */
   let metaPending: Set<(final: boolean) => void> | null = null;
+  /** 일반 MMR 칸의 매치 평균 휘장들 (undefined = 아직 안 옴 · 못 받음) */
+  let mmrBadges: number[] | undefined;
+  /** 일반 MMR 을 받는 중이면, 도착했을 때 다시 그릴 칸들 (다 받으면 null) */
+  let mmrPending: Set<() => void> | null = null;
   /** 지금 보고 있는 플레이어 (재시도할지 판단 — A → B → 다시 A 면 처음 A 의 요청도 계속 쓸모 있다) */
   let viewingPlayer: number | undefined;
   /** metadata 응답(include_info 라 매치마다 큼)에서 쓰는 것만 — 캐시에 넣을 크기를 줄인다 */
@@ -194,8 +226,13 @@ if (configEl && form && view) {
     return node;
   }
   const clean = (nodes: Child[]) => nodes.filter((n) => n !== null && n !== undefined && n !== false).map((n) => (typeof n === 'number' ? String(n) : n)) as (Node | string)[];
-  const show = (...nodes: Child[]) => view.replaceChildren(...clean(nodes));
+  // 페이지가 잡아 둔 한 화면 높이(화면 밀림 방지)는 첫 그리기에서 풀고, 받는 동안만 loading() 이 같은 높이를 잡는다
+  const show = (...nodes: Child[]) => {
+    view.classList.remove('min-h-svh');
+    view.replaceChildren(...clean(nodes));
+  };
   const message = (text: string, tone = 'text-paper-400') => el('p', { class: `py-8 text-center ${tone}` }, text);
+  const loading = () => el('div', { class: 'min-h-svh' }, message(t.loading));
   const fill = (s: string, vars: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (_, k: string) => String(vars[k] ?? ''));
 
   /** 404 는 '결과 없음' 으로 본다 (이름 검색은 일치하는 플레이어가 없으면 404) */
@@ -294,12 +331,6 @@ if (configEl && form && view) {
       ? el('img', { src: hero.icon, alt: '', class: `${box} object-cover`, loading: 'lazy', decoding: 'async' })
       : el('span', { class: `${box} grid place-items-center text-2xs font-bold text-paper-400`, 'aria-hidden': 'true' }, hero?.name.slice(0, 1) ?? '?');
   }
-  function heroLink(heroId: number, ...children: Child[]) {
-    const hero = cfg.heroes[heroId];
-    return hero
-      ? el('a', { href: `${cfg.heroPath}${hero.slug}/`, class: 'flex min-w-0 items-center gap-2.5 hover:text-brass-200' }, ...children)
-      : el('span', { class: 'flex min-w-0 items-center gap-2.5' }, ...children);
-  }
   const heroName = (id: number) => cfg.heroes[id]?.name ?? `#${id}`;
   const kdaRatio = (k: number, d: number, a: number) => nf.format((k + a) / Math.max(1, d));
   const percent = (n: number) => `${Math.round(n * 100)}%`;
@@ -321,6 +352,7 @@ if (configEl && form && view) {
    * 휘장 평균 — 번호를 그대로 평균하면 단계 경계(36 → 41)가 어긋나므로
    * 하위 등급 1–6 을 일렬로 편 순번으로 평균한 뒤 휘장 번호로 되돌린다.
    */
+  const matchBadge = (x: MatchMeta) => x.average_badge || averageBadge([x.average_badge_team0, x.average_badge_team1].filter((b): b is number => Boolean(b)));
   function averageBadge(badges: number[]): number | undefined {
     if (!badges.length) return undefined;
     const idx = badges.map((b) => { const { tier, sub } = decodeBadge(b); return tier * 6 + Math.max(0, sub - 1); });
@@ -379,7 +411,7 @@ if (configEl && form && view) {
   // ─── 검색 결과 ─────────────────────────────────────────────
   async function renderSearch(query: string) {
     const my = ++request;
-    show(message(t.loading));
+    show(loading());
     try {
       const list = await get<SteamProfile[]>(`/v1/players/steam-search?search_query=${encodeURIComponent(query)}&limit=24`, []);
       if (my !== request) return;
@@ -414,104 +446,306 @@ if (configEl && form && view) {
   }
 
   // ─── 순위표 (검색어 없이 들어왔을 때) ─────────────────────────
-  // 한 화면에 50명, 넓은 화면은 두 단. 이름·주 영웅만 — 휘장은 순위표에 없고, 플레이어마다 따로 부르면 무거워진다
-  const lbCache = new Map<Region, Promise<LeaderboardEntry[]>>();
-  async function renderLeaderboard(region: Region) {
+  // 지역마다 100위까지, 넓은 화면은 두 단. 순위 · 이름은 지금 순위표(1시간마다 갱신)를 받고, 계정 · 프로필 사진 · 주 영웅은 빌드 때 정해 둔 파일(6시간마다)에서.
+  // 계정을 하나로 정하지 못한 이름은 '식별불가' — 누르면 예전처럼 후보들의 매치 기록으로 찾는다 (pickCandidate)
+  // 영웅 순위표 (/players/heroes/?hero=slug, 2026-11-04 사용자) — Valve 의 영웅별 순위표 (지역마다 수 명–200명). 빌드 때 정한 파일이 없어
+  // 프로필 사진 · 티어는 볼 때 받는다 (프로필 1번 · /v1/players/rank 1번 — 랭크는 IP 당 분당 20회라 막히면 같은 지역 순위표 파일에 있는 사람만 티어).
+  // 계정은 후보가 하나이거나, 같은 지역 순위표 파일이 그 이름에 고른 계정이 후보 안에 있을 때만
+  type LbAccount = LeaderboardInfo['accounts'][string];
+  /** 영웅 순위표에서 볼 때 정한 계정 · 이름 → 계정 (이름은 아무 글자나 와서 Map) */
+  interface HeroBoardAccounts {
+    accounts: Map<number, Partial<LbAccount>>;
+    names: Map<string, number>;
+  }
+  const lbCache = new Map<string, Promise<LeaderboardEntry[]>>();
+  const lbInfoCache = new Map<Region, Promise<LeaderboardInfo | null>>();
+  const heroAccCache = new Map<string, Promise<HeroBoardAccounts>>();
+  const heroBySlug = new Map(Object.entries(cfg.heroes).map(([id, h]) => [h.slug, Number(id)]));
+  /** hero: undefined = 전체 순위표, 0 = 영웅 순위표(아직 안 고름) */
+  const boardSearch = (region: Region, hero?: number) => `?region=${region}${hero && cfg.heroes[hero] ? `&hero=${cfg.heroes[hero].slug}` : ''}`;
+  const own = <T>(o: Record<string, T> | undefined, k: string) => (o && Object.hasOwn(o, k) ? o[k] : undefined);
+  /** 순위표 줄의 계정 — 후보 하나면 그 계정, 여럿이면 빌드 때 고른 계정이 지금도 후보 안에 있을 때만 */
+  function lbAccount(e: LeaderboardEntry, info: LeaderboardInfo | null): number | undefined {
+    const ids = e.possible_account_ids ?? [];
+    const chosen = e.account_name ? own(info?.names, e.account_name) : undefined;
+    return ids.length === 1 ? ids[0] : chosen !== undefined && ids.includes(chosen) ? chosen : undefined;
+  }
+  /**
+   * 영웅 순위표의 계정 · 프로필 사진 · 지금 휘장. 후보가 여럿인 이름(후보 20개까지)은 빌드 때 지역 순위표와 같은 규칙으로 고른다
+   * (src/data/api/leaderboard.ts — 최근 30일 휘장 100+ 로 경기한 후보가 하나, 없으면 81+, 그래도 없으면 60일 안 100+, 여럿이면 지금 스팀 이름이 같은 후보가 하나).
+   * 요청은 랭크 1번 + 프로필 1–2번. 실패해도 빈 값으로 줄은 그리고, 실패했으면 다음에 다시 받게 기억하지 않는다
+   */
+  function heroAccounts(key: string, list: LeaderboardEntry[], info: LeaderboardInfo | null): Promise<HeroBoardAccounts> {
+    let hit = heroAccCache.get(key);
+    if (hit) return hit;
+    hit = (async () => {
+      let failed = false;
+      const soft = <T>(p: Promise<T>, empty: T) => p.catch(() => ((failed = true), empty));
+      // 같은 주소면 deadlock-api 앞단 캐시(5–10분)를 함께 쓰도록 정렬
+      const ids = (xs: number[]) => [...new Set(xs)].sort((a, b) => a - b);
+      const known = list.map((e) => lbAccount(e, info)).filter((id): id is number => id !== undefined);
+      const nameCount = new Map<string, number>();
+      for (const e of list) if (e.account_name) nameCount.set(e.account_name, (nameCount.get(e.account_name) ?? 0) + 1);
+      // 랭크 요청 한 번(계정 400개까지)에 들어가는 만큼만 — 순위 높은 줄부터
+      let room = 400 - known.length;
+      const open = list.filter((e) => {
+        const n = e.possible_account_ids?.length ?? 0;
+        const take = lbAccount(e, info) === undefined && e.account_name && nameCount.get(e.account_name) === 1 && n > 1 && n <= HERO_LB_CANDIDATES && n <= room;
+        if (take) room -= n;
+        return take;
+      });
+      // 랭크 · 프로필은 sessionStorage 에도 10분 둔다 — 랭크는 IP 당 분당 20회에 전체 200회/분(빌드의 loadRank 와 나눠 씀)이라 새로 열 때마다 다시 받지 않게 (#102 리뷰)
+      type RankApi = { account_id: number; badge?: number; last_match?: { start_time?: number } | null };
+      const ranks = await soft(
+        cachedGet<RankApi[]>(`/v1/players/rank?account_ids=${ids([...known, ...open.flatMap((e) => e.possible_account_ids!)]).join(',')}`, [], {
+          ttl: HERO_LB_TTL,
+          trim: (rows) => rows.map((r) => ({ account_id: r.account_id, badge: r.badge, last_match: { start_time: r.last_match?.start_time } })),
+        }),
+        [],
+      );
+      const rank = new Map<number, RankRow>(ranks.map((r) => [r.account_id, { badge: r.badge ?? 0, at: r.last_match?.start_time ?? 0 }]));
+      const now = Date.now() / 1000;
+      const names = new Map<string, number>();
+      const tied: Array<[string, number[]]> = [];
+      for (const e of open) {
+        const fit = fitCandidates(e.possible_account_ids!, rank, now);
+        if (fit.length === 1) names.set(e.account_name!, fit[0]);
+        else if (fit.length > 1) tied.push([e.account_name!, fit]);
+      }
+      // 프로필은 한 번에 100명까지
+      const want = ids([...known, ...names.values(), ...tied.flatMap(([, f]) => f)]);
+      const chunks: number[][] = [];
+      for (let i = 0; i < want.length; i += 100) chunks.push(want.slice(i, i + 100));
+      const profiles = (
+        await Promise.all(
+          chunks.map((c) =>
+            soft(
+              cachedGet<SteamProfile[]>(`/v1/players/steam?account_ids=${c.join(',')}`, [], {
+                ttl: HERO_LB_TTL,
+                // 한 명뿐이면 전적 페이지 머리와 같은 주소(같은 캐시)라 SteamProfile 칸을 모두 남긴다 — 줄이면 전적 머리의 사진 · Steam 링크가 빠졌다 (#102 2차 리뷰)
+                trim: (rows) =>
+                  rows.map((p) => ({ account_id: p.account_id, personaname: p.personaname, profileurl: p.profileurl, avatarmedium: p.avatarmedium, avatarfull: p.avatarfull })),
+              }),
+              [],
+            ),
+          ),
+        )
+      ).flat();
+      const persona = new Map(profiles.map((p) => [p.account_id, p.personaname]));
+      for (const [name, fit] of tied) {
+        const one = fit.filter((id) => persona.get(id) === name);
+        if (one.length === 1) names.set(name, one[0]);
+      }
+      // 칸마다 따로 — 받지 못한 칸(랭크가 막혀 티어 없음 등)은 줄을 그릴 때 지역 순위표 파일 값으로 채운다
+      const accounts = new Map<number, Partial<LbAccount>>();
+      for (const p of profiles) {
+        const a = /\/([0-9a-f]{40})_medium\.jpg$/.exec(p.avatarmedium ?? '')?.[1];
+        if (a) accounts.set(p.account_id, { a });
+      }
+      for (const [id, r] of rank) {
+        const b = shownBadge(r, now);
+        if (b) accounts.set(id, { ...accounts.get(id), b });
+      }
+      if (failed) heroAccCache.delete(key);
+      return { accounts, names };
+    })();
+    heroAccCache.set(key, hit);
+    hit.catch(() => heroAccCache.delete(key));
+    return hit;
+  }
+  async function renderLeaderboard(region: Region, hero?: number) {
     const my = ++request;
-    let shown = LB_PAGE;
+    const heroBoard = hero !== undefined;
+    const goBoard = (r: Region, h?: number) => {
+      history.replaceState(null, '', `${location.pathname}${boardSearch(r, h)}`);
+      void renderLeaderboard(r, h);
+    };
     const regionButtons = REGIONS.map((r) => {
       const b = el('button', { type: 'button', 'aria-pressed': String(r === region) }, t[`region${r}`]);
-      b.addEventListener('click', () => {
-        if (r === region) return;
-        history.replaceState(null, '', `${location.pathname}?region=${r}`);
-        void renderLeaderboard(r);
-      });
+      b.addEventListener('click', () => r !== region && goBoard(r, hero));
       return b;
     });
-    const body = el('div', {}, message(t.loading));
+    // 영웅 고르기 — 빌드 페이지와 같은 초상 줄 (줄바꿈)
+    const heroStrip = heroBoard
+      ? el(
+          'div',
+          { role: 'group', 'aria-label': t.hlbHero, class: 'flex flex-wrap gap-1 px-4 pt-3 sm:gap-1.5' },
+          ...Object.entries(cfg.heroes)
+            .sort(([, a], [, b]) => a.name.localeCompare(b.name, cfg.locale))
+            .map(([id, h]) => {
+              const on = Number(id) === hero;
+              const b = el(
+                'button',
+                {
+                  type: 'button',
+                  title: h.name,
+                  'aria-label': h.name,
+                  'aria-pressed': String(on),
+                  class: `grid size-8 flex-none place-items-center overflow-hidden rounded-sm bg-ink-850 sm:size-10 ${on ? 'ring-2 ring-brass-400' : hero ? 'opacity-50 hover:opacity-100' : ''}`,
+                },
+                h.icon ? el('img', { src: h.icon, alt: '', class: 'size-full object-cover', loading: 'lazy', decoding: 'async' }) : el('span', { class: 'text-xs font-bold' }, h.name.slice(0, 2)),
+              );
+              b.addEventListener('click', () => !on && goBoard(region, Number(id)));
+              return b;
+            }),
+        )
+      : null;
+    // 받는 동안은 한 화면 높이를 잡아 둔다 — 100줄이 한꺼번에 들어오며 아래 안내 · 푸터가 밀리지 않게 (화면 밀림)
+    const waiting = !(heroBoard && !hero);
+    const body = el('div', { class: waiting ? 'min-h-svh' : '' }, waiting ? message(t.loading) : message(t.hlbPick));
+    const fillBody = (...nodes: Child[]) => {
+      body.classList.remove('min-h-svh');
+      body.replaceChildren(...clean(nodes));
+    };
     show(
       panel(
-        t.lbTitle,
-        el('span', { class: 'ml-auto text-xs text-paper-500' }, t.lbMeta),
+        heroBoard ? (hero ? `${t.hlbTitle} · ${heroName(hero)}` : t.hlbTitle) : t.lbTitle,
+        heroBoard ? null : el('span', { class: 'ml-auto text-xs text-paper-500' }, t.lbMeta),
         el(
           'div',
           { class: 'flex flex-wrap items-center gap-2 px-4 pt-3' },
           el('div', { role: 'group', 'aria-label': t.lbRegion, class: 'seg max-w-full max-sm:flex-wrap' }, ...regionButtons),
+          heroBoard ? null : el('span', { class: 'ml-auto text-xs font-semibold text-paper-200' }, t.lbHeroesRange),
         ),
+        heroStrip,
         body,
       ),
-      el('p', { class: 'mt-3 max-w-3xl text-xs text-paper-400' }, t.lbNote),
+      el('p', { class: 'mt-3 max-w-3xl text-xs text-paper-400' }, heroBoard ? t.hlbNote : t.lbNote),
     );
+    if (heroBoard && !hero) return;
 
-    let pending = lbCache.get(region);
+    const path = heroBoard ? `/v1/leaderboard/${region}/${hero}` : `/v1/leaderboard/${region}`;
+    let pending = lbCache.get(path);
     if (!pending) {
-      pending = get<{ entries?: LeaderboardEntry[] }>(`/v1/leaderboard/${region}`, {}).then((r) => r.entries ?? []);
-      pending.catch(() => lbCache.delete(region));
-      lbCache.set(region, pending);
+      pending = get<{ entries?: LeaderboardEntry[] }>(path, {}).then((r) => r.entries ?? []);
+      pending.catch(() => lbCache.delete(path));
+      lbCache.set(path, pending);
+    }
+    let infoP = lbInfoCache.get(region);
+    if (!infoP) {
+      const file = cfg.leaderboard?.[region];
+      // 덧붙임 정보는 없어도 순위표는 그린다 — 실패하면 다음에 다시 받게 지운다
+      infoP = file
+        ? fetch(file)
+            .then((r) => (r.ok ? (r.json() as Promise<LeaderboardInfo>) : null))
+            .catch(() => null)
+        : Promise.resolve(null);
+      void infoP.then((v) => (v ? undefined : lbInfoCache.delete(region)));
+      lbInfoCache.set(region, infoP);
     }
     let entries: LeaderboardEntry[];
+    let info: LeaderboardInfo | null;
     try {
-      entries = await pending;
+      [entries, info] = await Promise.all([pending, infoP]);
     } catch {
-      if (my === request) body.replaceChildren(message(t.error, 'text-nerf'));
+      if (my === request) fillBody(message(t.error, 'text-nerf'));
       return;
     }
+    if (my !== request) return;
+
+    const list = entries.filter((e) => e.rank <= LB_SIZE).sort((a, b) => a.rank - b.rank);
+    if (!list.length) return fillBody(message(t.lbEmpty));
+    // 영웅 순위표는 계정 · 사진 · 티어를 지금 정한다 (못 받은 사람은 지역 순위표 파일 값)
+    const live = heroBoard ? await heroAccounts(path, list, info) : undefined;
     if (my !== request) return;
 
     const row = (e: LeaderboardEntry) => {
       const ids = e.possible_account_ids ?? [];
       const name = e.account_name || '—';
-      const href = ids.length === 1 ? `?id=${ids[0]}` : `?q=${encodeURIComponent(name)}`;
-      // 같은 이름 계정이 여럿이면(아시아 639명 중 234명) 누를 때 그중 상위 랭크 판을 한 계정을 찾아 바로 전적으로 (2026-10-16 사용자 지적 —
-      // 예전엔 이름 검색으로 넘어갔다). 후보가 너무 많으면(흔한 이름) 이름 검색 그대로
-      const candidates = ids.length > 1 && ids.length <= CANDIDATES_MAX ? { 'data-candidates': ids.join(',') } : {};
+      const id = lbAccount(e, info) ?? (e.account_name ? live?.names.get(e.account_name) : undefined);
+      // 영웅 순위표는 지금 받은 사진 · 티어를 칸마다 앞세우고, 없는 칸은 지역 순위표 파일 값
+      const file = id !== undefined ? own(info?.accounts, String(id)) : undefined;
+      const got = id !== undefined ? live?.accounts.get(id) : undefined;
+      const acc: LbAccount | undefined = file || got ? { h: [], ...file, ...got } : undefined;
+      // 영웅 순위표 페이지에서는 전적 페이지로 (새 탭으로 열어도 맞게 주소 전체)
+      const href = `${heroPage ? cfg.playersPath : ''}${id !== undefined ? `?id=${id}` : `?q=${encodeURIComponent(name)}`}`;
+      // 같은 이름 계정이 여럿이면(아시아 100위 안 44명) 누를 때 그중 상위 랭크 판을 한 계정을 찾아 바로 전적으로 (2026-10-16 사용자 지적).
+      // 후보가 너무 많으면(흔한 이름) 이름 검색 그대로
+      const candidates = id === undefined && ids.length > 1 && ids.length <= CANDIDATES_MAX ? { 'data-candidates': ids.join(',') } : {};
+      // 모바일은 사진을 줄여 이름 칸을 남긴다 (320px 에서 이름이 3글자만 보였다, #88 리뷰)
+      const box = 'size-10 max-sm:size-8 flex-none rounded-sm bg-ink-800';
+      const avatar =
+        acc?.a && AVATAR_HASH.test(acc.a)
+          ? el('img', { src: `https://avatars.steamstatic.com/${acc.a}_medium.jpg`, alt: '', class: box, loading: 'lazy', decoding: 'async', referrerpolicy: 'no-referrer' })
+          : // 식별불가는 빈 칸 — '?' 는 Steam 기본 프로필 사진과 헷갈린다
+            el('span', { class: `${box} grid place-items-center text-sm font-bold text-paper-500`, 'aria-hidden': 'true' }, id === undefined ? '' : ([...name][0] ?? ''));
+      // 티어 = 빌드 때 받은 그 계정의 지금 휘장. 모바일은 단계 이름을 숨기고 휘장 + 로마 숫자만 (상위권은 휘장이 거의 같아 숫자가 있어야 구분된다)
+      const tier = (() => {
+        const w = 'w-36 flex-none max-sm:w-12';
+        if (!acc?.b) return el('span', { class: w, 'aria-hidden': 'true' });
+        const { tier: step, sub } = decodeBadge(acc.b);
+        // 하위 등급은 로마 숫자로 — '불멸자 IV' (2026-11-03 사용자)
+        const roman = sub ? (ROMAN[sub - 1] ?? String(sub)) : '';
+        return el(
+          'span',
+          { class: `flex ${w} items-center gap-1.5 text-sm font-semibold text-paper-200 max-sm:gap-1` },
+          rankIcon(step, 'size-7'),
+          el('span', { class: 'truncate' }, el('span', { class: 'max-sm:sr-only' }, `${rankLabel(step)} `), roman),
+        );
+      })();
+      // 주 영웅은 빌드 때 받은 최근 30일 판수 순, 없으면 Valve 순위표 값 (4명 중 1명꼴로만 온다)
+      const heroes = (acc?.h.length ? acc.h : (e.top_hero_ids ?? [])).filter((h) => cfg.heroes[h]).slice(0, 3);
       return el(
         'li',
-        { class: 'break-inside-avoid border-b border-line' },
+        { class: 'border-b border-line' },
         el(
           'a',
-          { href, 'data-nav': '', ...candidates, class: 'flex items-center gap-3 px-4 py-2 transition-colors duration-150 hover:bg-ink-800 aria-busy:opacity-50' },
-          el('span', { class: `w-9 flex-none text-right text-sm font-bold tabular-nums ${e.rank <= 3 ? 'text-brass-400' : 'text-paper-400'}` }, e.rank),
-          // 주 영웅 아이콘 칸은 뺐다 (2026-10-16) — API 가 top_hero_ids 를 빈 값으로 줘서 빈 칸 · 회색 네모만 보였다
-          el('span', { class: 'min-w-0 flex-1 truncate text-sm font-semibold text-paper-100' }, name),
+          { href, 'data-nav': '', ...candidates, class: 'flex items-center gap-3 px-4 py-2.5 max-sm:gap-2 max-sm:px-3 transition-colors duration-150 hover:bg-ink-800 aria-busy:opacity-50' },
+          el('span', { class: `w-8 flex-none text-right text-sm font-bold tabular-nums max-sm:w-6 max-sm:text-xs ${e.rank <= 3 ? 'text-brass-400' : 'text-paper-400'}` }, e.rank),
+          avatar,
+          el(
+            'span',
+            { class: 'min-w-0 flex-1' },
+            el('span', { class: 'block truncate font-semibold text-paper-100' }, name),
+            id === undefined ? el('span', { class: 'block text-2xs text-paper-500', title: t.lbUnknownTip }, t.lbUnknown) : null,
+          ),
+          tier,
+          // 영웅이 없어도 자리를 두어 티어 열이 줄마다 같은 곳에 오게. 영웅 순위표엔 주 영웅 열이 없다
+          !heroBoard &&
+          el(
+            'span',
+            {
+              // 모바일은 영웅을 작게, 360px 아래에선 둘만 (320px 에서 이름 칸이 34px 이었다)
+              class: 'flex w-26 flex-none justify-end gap-1 max-sm:w-20 max-[359px]:w-13',
+              ...(heroes.length ? { role: 'img', 'aria-label': `${t.lbHeroes}: ${heroes.map(heroName).join(', ')}` } : { 'aria-hidden': 'true' }),
+            },
+            ...heroes.map((h, i) => {
+              const icon = heroIcon(h, `size-8 max-sm:size-6 ${i === 2 ? 'max-[359px]:hidden' : ''}`);
+              icon.setAttribute('title', heroName(h));
+              return icon;
+            }),
+          ),
         ),
       );
     };
-    const draw = () => {
-      const list = entries;
-      if (!list.length) return body.replaceChildren(message(t.lbEmpty));
-      const more = el('button', { type: 'button', class: 'mx-auto mt-3 block rounded-md bg-ink-850 px-4 py-1.5 text-sm font-semibold text-paper-200 hover:bg-ink-800' }, t.more);
-      more.addEventListener('click', () => {
-        shown += LB_PAGE;
-        draw();
-      });
-      body.replaceChildren(
-        ...clean([
-        el('ol', { class: 'mt-2 lg:columns-2 lg:gap-0' }, ...list.slice(0, shown).map(row)),
-        shown < list.length ? more : null,
-        el('div', { class: 'h-3' }),
-        ]),
-      );
-    };
-    draw();
+    fillBody(el('ol', { class: 'mt-2' }, ...list.map(row)), el('div', { class: 'h-3' }));
   }
 
   // ─── 플레이어 ──────────────────────────────────────────────
-  async function renderPlayer(id: number) {
+  async function renderPlayer(id: number, heroSlug?: string) {
     const my = ++request;
     viewingPlayer = id;
-    show(message(t.loading));
+    show(loading());
     // 나눠 그린다 (#24): 프로필 · 랭크(0.5초) → 머리, 매치 기록(처음엔 Steam 에서 받아 9초쯤) → 요약 · 목록.
     // 매치 평균 랭크 · MVP(metadata)는 장식이라 화면을 막지 않고 뒤에서 채운다 — limit=1000 은 19초쯤 걸려(2026-10-29 측정)
-    // 첫 50판을 따로 먼저 받아 보이는 줄부터 채우고, 전체(요약의 평균 매치 랭크)는 이어서. 이 주소는 IP 당 분당 30회
+    // 최근 50판을 따로 먼저 받아 보이는 줄부터 채우고, 최근 1000판(요약의 평균 매치 랭크)은 이어서. 이 주소는 IP 당 분당 30회.
+    // 순서를 꼭 적는다 — 기본은 오래된 경기부터라 50판은 화면 줄을 못 채우고, 1000판이 넘는 사람은 최근 경기가 아예 안 온다
     const steamP = cachedGet<SteamProfile[]>(`/v1/players/steam?account_ids=${id}`, []);
     const rankP = cachedGet<PlayerRank>(`/v1/players/${id}/rank`, {}, { ttl: FRESH_TTL });
     const historyP = cachedGet<MatchEntry[]>(`/v1/players/${id}/match-history`, [], { trim: trimHistory, ttl: FRESH_TTL });
     const metaUrl = (limit: number) =>
-      `/v1/matches/metadata?account_ids=${id}&include_info=true&extra_player_columns=mvp_rank&only_filtered_players=true&limit=${limit}&game_mode=normal&match_mode=ranked,unranked`;
+      `/v1/matches/metadata?account_ids=${id}&include_info=true&extra_player_columns=mvp_rank&only_filtered_players=true&limit=${limit}&order_by=start_time&order_direction=desc&game_mode=normal&match_mode=ranked,unranked`;
     const metaAllCached = isCached(metaUrl(1000));
     const metaAll = cachedGet<MatchMeta[]>(metaUrl(1000), [], { trim: trimMeta, retryIf: () => viewingPlayer === id });
     const metaFirst = metaAllCached ? metaAll : cachedGet<MatchMeta[]>(metaUrl(50), [], { trim: trimMeta });
+    // 일반 MMR 칸은 따로 받는다 — 값이 있는 경기(7/30 까지)의 최근 200판만이라 약 2초 (1000판 요청은 때에 따라 20초까지).
+    // 1000판 요청은 그대로 둔다: 50판 뒤쪽 줄의 MVP 별 · 랭크 탭 평균이 쓴다
+    const mmrUrl = `/v1/matches/metadata?account_ids=${id}&include_info=true&limit=200&order_by=start_time&order_direction=desc&game_mode=normal&match_mode=unranked&max_unix_timestamp=${NORMAL_BADGE_UNTIL}`;
+    const mmrCached = isCached(mmrUrl);
+    const mmrP = cachedGet<MatchMeta[]>(mmrUrl, [], { trim: trimMeta, retryIf: () => viewingPlayer === id });
+    const mmrWaiters = new Set<() => void>();
+    mmrBadges = undefined;
+    mmrPending = mmrCached ? null : mmrWaiters;
     // 전체를 이미 받아 뒀으면(다시 연 플레이어) 그리기 전에 채우므로 기다릴 칸이 없다
     const listeners = new Set<(final: boolean) => void>();
     metaPending = metaAllCached ? null : listeners;
@@ -546,8 +780,7 @@ if (configEl && form && view) {
       for (const m of matches) {
         const x = byMatch.get(m.match_id);
         if (!x) continue;
-        const teams = [x.average_badge_team0, x.average_badge_team1].filter((b): b is number => Boolean(b));
-        m.avg_badge = x.average_badge || averageBadge(teams);
+        m.avg_badge = matchBadge(x);
         m.mvp_rank = x.players?.find((p) => p.account_id === id)?.mvp_rank ?? undefined;
       }
       listeners.forEach((update) => update(final));
@@ -561,9 +794,35 @@ if (configEl && form && view) {
       void metaFirst.then((meta) => applyMeta(meta, false), () => undefined);
       void metaAll.then((meta) => applyMeta(meta, true), metaDone);
     }
+    const mmrDone = () => {
+      if (mmrPending === mmrWaiters) mmrPending = null;
+    };
+    const applyMmr = (list: MatchMeta[]) => {
+      if (my !== request) return;
+      mmrBadges = list.map(matchBadge).filter((b): b is number => Boolean(b));
+      mmrWaiters.forEach((update) => update());
+      mmrDone();
+    };
+    if (mmrCached) {
+      applyMmr(await mmrP.catch(() => []));
+      if (my !== request) return;
+    } else {
+      void mmrP.then(applyMmr, mmrDone);
+    }
 
     const body = el('div', { class: 'space-y-4' });
     let mode: Mode = 'all';
+    // 영웅별 기록에서 고른 영웅 (0 = 전체) — 종류 탭을 바꿔도 유지하고, 주소 ?hero= 로 공유된다
+    let hero = heroBySlug.get(heroSlug ?? '') ?? 0;
+    const pickHero = (h: number) => {
+      hero = h;
+      const params = new URLSearchParams(location.search);
+      // 빌드 사이에 나온 새 영웅처럼 사이트 목록에 없는 영웅은 주소에 넣지 않는다
+      const slug = h ? cfg.heroes[h]?.slug : undefined;
+      if (slug) params.set('hero', slug);
+      else params.delete('hero');
+      window.history.replaceState(null, '', `${location.pathname}?${params}`);
+    };
     const counts: Record<Mode, number> = {
       all: matches.filter((m) => inMode(m, 'all')).length,
       ranked: matches.filter((m) => inMode(m, 'ranked')).length,
@@ -582,7 +841,7 @@ if (configEl && form && view) {
       b.addEventListener('click', () => {
         mode = m;
         modeButtons.forEach((o, i) => o.setAttribute('aria-pressed', String(modes[i] === m)));
-        body.replaceChildren(...clean(renderStats(matches.filter((x) => inMode(x, mode)), id, mode)));
+        body.replaceChildren(...clean(renderStats(matches.filter((x) => inMode(x, mode)), id, mode, hero, pickHero)));
       });
       return b;
     });
@@ -598,7 +857,7 @@ if (configEl && form && view) {
       ),
       body,
     );
-    body.replaceChildren(...clean(renderStats(matches.filter((x) => inMode(x, 'all')), id, 'all')));
+    body.replaceChildren(...clean(renderStats(matches.filter((x) => inMode(x, 'all')), id, 'all', hero, pickHero)));
   }
 
   /** 머리: 아바타·이름·Steam 링크 | 현재 랭크 (진행도·마지막 랭크 매치) */
@@ -651,7 +910,7 @@ if (configEl && form && view) {
   }
 
   /** 선택한 종류의 매치로 요약·최근 매치·영웅별 기록을 만든다 */
-  function renderStats(matches: MatchEntry[], playerId: number, mode: Mode): Child[] {
+  function renderStats(matches: MatchEntry[], playerId: number, mode: Mode, hero: number, pickHero: (hero: number) => void): Child[] {
     const scored = matches.filter((m) => ['win', 'loss'].includes(outcome(m)));
     const wins = scored.filter((m) => outcome(m) === 'win').length;
     const sum = (k: 'player_kills' | 'player_deaths' | 'player_assists') => matches.reduce((n, m) => n + m[k], 0);
@@ -663,11 +922,10 @@ if (configEl && form && view) {
         el('p', { class: 'mt-0.5 text-2xl font-bold tracking-tight tabular-nums' }, value),
         sub ? el('p', { class: 'text-xs text-paper-400 tabular-nums' }, sub) : null,
       );
-    // 매치 평균 랭크 — 진짜 랭크와 헷갈리지 않게 (2026-10-16 사용자): 전체 · 일반 탭은 '일반 MMR(추정)' = 일반 매치만의 평균,
+    // 매치 평균 랭크 — 진짜 랭크와 헷갈리지 않게 (2026-10-16 사용자): 전체 · 일반 탭은 '일반 MMR(추정)' = 따로 받은 일반 매치 평균,
     // 랭크 탭은 '랭크 매치 평균'. 난투는 평균 랭크가 없어 칸을 뺀다
-    const avgFrom = mode === 'ranked' ? matches : matches.filter((m) => inMode(m, 'unranked'));
     const avgTileFor = () => {
-      const avgBadges = avgFrom.map((m) => m.avg_badge).filter((b): b is number => Boolean(b));
+      const avgBadges = mode === 'ranked' ? matches.map((m) => m.avg_badge).filter((b): b is number => Boolean(b)) : (mmrBadges ?? []);
       const avg = averageBadge(avgBadges);
       return el(
         'div',
@@ -679,14 +937,16 @@ if (configEl && form && view) {
       );
     };
     let avgTile = mode === 'brawl' ? null : avgTileFor();
-    if (avgTile)
-      // 요약은 전체가 왔을 때만 — 첫 50판 평균을 먼저 보이면 값이 크게 바뀌어(수행자 6 → 전령사 4) 헷갈린다
-      metaPending?.add((final) => {
-        if (!final) return;
+    if (avgTile) {
+      const redraw = () => {
         const next = avgTileFor();
         avgTile!.replaceWith(next);
         avgTile = next;
-      });
+      };
+      // 랭크 탭 요약은 전체가 왔을 때만 — 첫 50판 평균을 먼저 보이면 값이 크게 바뀌어 헷갈린다
+      if (mode === 'ranked') metaPending?.add((final) => final && redraw());
+      else mmrPending?.add(redraw);
+    }
     const summary = matches.length
       ? el(
           'div',
@@ -702,17 +962,42 @@ if (configEl && form && view) {
         )
       : null;
 
-    // 최근 매치
+    // 최근 매치 — 영웅별 기록에서 영웅을 고르면 그 영웅 매치만 (요약 칸은 그대로)
+    let selected = hero;
+    let recent = matches;
     const matchList = el('ul', { class: 'divide-y divide-line' });
     let shown = 0;
     const moreMatches = el('button', { type: 'button', class: 'w-full py-3 text-sm font-semibold text-brass-400 hover:text-brass-200' }, t.more);
     const showMoreMatches = () => {
-      matchList.append(...matches.slice(shown, shown + PAGE_SIZE).map((m) => matchRow(m, playerId)));
+      matchList.append(...recent.slice(shown, shown + PAGE_SIZE).map((m) => matchRow(m, playerId)));
       shown += PAGE_SIZE;
-      moreMatches.hidden = shown >= matches.length;
+      moreMatches.hidden = shown >= recent.length;
     };
     moreMatches.addEventListener('click', showMoreMatches);
-    showMoreMatches();
+    const recentCount = el('span', { class: 'text-xs text-paper-500 tabular-nums' });
+    const heroChip = el('button', {
+      type: 'button',
+      class: 'flex min-w-0 items-center gap-1.5 rounded-sm bg-ink-800 py-0.5 pr-2 pl-0.5 text-xs font-semibold text-brass-200 ring-1 ring-line-strong ring-inset transition-colors duration-150 hover:bg-ink-700',
+    });
+    const recentBody = el('div');
+    const renderRecent = () => {
+      recent = selected ? matches.filter((m) => m.hero_id === selected) : matches;
+      matchList.replaceChildren();
+      shown = 0;
+      showMoreMatches();
+      recentCount.textContent = nf.format(recent.length);
+      heroChip.hidden = !selected;
+      if (selected) {
+        const label = fill(t.heroFilterClear, { hero: heroName(selected) });
+        heroChip.replaceChildren(heroIcon(selected, 'size-5'), el('span', { class: 'truncate' }, heroName(selected)), el('span', { class: 'text-paper-400', 'aria-hidden': 'true' }, '×'));
+        heroChip.setAttribute('aria-label', label);
+        heroChip.title = label;
+      }
+      recentBody.replaceChildren(...(recent.length ? [matchList, moreMatches] : [message(t.empty)]));
+    };
+    renderRecent();
+    const recentPanel = panel(t.recent, el('span', { class: 'ml-auto flex min-w-0 items-center gap-3' }, heroChip, recentCount), recentBody);
+    recentPanel.classList.add('scroll-mt-3');
 
     // 영웅별 기록 — 같은 매치 목록에서 계산해 위 요약과 항상 맞는다
     const byHero = new Map<number, { hero: number; n: number; w: number; scored: number; k: number; d: number; a: number }>();
@@ -729,19 +1014,61 @@ if (configEl && form && view) {
     }
     const heroes = [...byHero.values()].sort((a, b) => b.n - a.n);
     const heroList = el('ul', { class: 'divide-y divide-line' });
-    const heroRow = (s: (typeof heroes)[number]) =>
-      el(
-        'li',
-        { class: 'flex items-center gap-3 px-4 py-2.5' },
-        el('span', { class: 'min-w-0 flex-1' }, heroLink(s.hero, heroIcon(s.hero, 'size-8'), el('span', { class: 'min-w-0' }, el('span', { class: 'block truncate text-sm font-semibold' }, heroName(s.hero)), el('span', { class: 'block text-2xs text-paper-500 tabular-nums' }, `${nf.format(s.n)} ${t.matches}`)))),
+    const heroButtons = new Map<number, HTMLElement>();
+    const choose = (h: number) => {
+      selected = h;
+      heroButtons.forEach((b, id) => b.setAttribute('aria-pressed', String(id === h)));
+      renderRecent();
+      pickHero(h);
+    };
+    heroChip.addEventListener('click', () => {
+      // 칩이 숨으며 포커스가 사라지지 않게 — 풀린 영웅 줄이 화면 안이면 그 줄로, 아니면(좁은 화면 · 그 탭에 판 없음) 최근 매치 제목으로.
+      // 스크롤은 하지 않는다 (좁은 화면에서 아래 영웅별 기록으로 내려가 방금 풀린 목록이 안 보였다)
+      const row = heroButtons.get(selected);
+      choose(0);
+      const box = row?.getBoundingClientRect();
+      const title = recentPanel.querySelector<HTMLElement>('.panel-title');
+      title?.setAttribute('tabindex', '-1');
+      (box && box.top >= 0 && box.bottom <= innerHeight ? row : title)?.focus({ preventScroll: true });
+    });
+    const heroRow = (s: (typeof heroes)[number]) => {
+      // 누르면 영웅 상세로 가지 않고 위 최근 매치를 이 영웅 매치로 거른다 (2026-11-04 사용자), 다시 누르면 전체
+      const b = el(
+        'button',
+        {
+          type: 'button',
+          'aria-pressed': String(s.hero === selected),
+          title: t.heroFilterTip,
+          class:
+            'group flex w-full items-center gap-3 border-l-3 border-transparent py-2.5 pr-4 pl-[13px] text-left transition-colors duration-150 hover:bg-ink-850 aria-pressed:border-brass-400 aria-pressed:bg-ink-800',
+        },
         el(
           'span',
-          { class: 'w-16 text-right' },
+          { class: 'flex min-w-0 flex-1 items-center gap-2.5' },
+          heroIcon(s.hero, 'size-8'),
+          el(
+            'span',
+            { class: 'min-w-0' },
+            el('span', { class: 'block truncate text-sm font-semibold group-hover:text-brass-200 group-aria-pressed:text-brass-200' }, heroName(s.hero)),
+            el('span', { class: 'block text-2xs text-paper-500 tabular-nums' }, `${s.n} ${t.matches}`),
+          ),
+        ),
+        el(
+          'span',
+          { class: 'min-w-16 flex-none text-right' },
           el('span', { class: 'block text-sm font-semibold tabular-nums' }, s.scored ? percent(s.w / s.scored) : '–'),
-          el('span', { class: 'block text-2xs text-paper-500 tabular-nums' }, fill(t.record, { w: s.w, l: s.scored - s.w })),
+          el('span', { class: 'block text-2xs whitespace-nowrap text-paper-500 tabular-nums' }, fill(t.record, { w: s.w, l: s.scored - s.w })),
         ),
         el('span', { class: 'w-12 text-right text-sm text-paper-200 tabular-nums' }, kdaRatio(s.k, s.d, s.a)),
       );
+      b.addEventListener('click', () => {
+        choose(selected === s.hero ? 0 : s.hero);
+        // 좁은 화면에선 최근 매치가 영웅별 기록 위에 있다 — 거른 목록이 보이게 올려 준다
+        if (selected && recentPanel.getBoundingClientRect().top < 0) recentPanel.scrollIntoView({ block: 'start' });
+      });
+      heroButtons.set(s.hero, b);
+      return el('li', {}, b);
+    };
     let heroShown = 0;
     const moreHeroes = el('button', { type: 'button', class: 'w-full py-3 text-sm font-semibold text-brass-400 hover:text-brass-200' }, t.more);
     const showMoreHeroes = () => {
@@ -751,13 +1078,16 @@ if (configEl && form && view) {
     };
     moreHeroes.addEventListener('click', showMoreHeroes);
     showMoreHeroes();
+    // ?hero= 로 연 영웅이 첫 묶음 밖이면 그 줄이 보일 때까지 펼친다
+    const at = selected ? heroes.findIndex((s) => s.hero === selected) : -1;
+    while (at >= heroShown) showMoreHeroes();
 
     return [
       summary,
       el(
         'div',
         { class: 'grid items-start gap-4 lg:grid-cols-[minmax(0,1fr)_22rem]' },
-        panel(t.recent, el('span', { class: 'ml-auto text-xs text-paper-500 tabular-nums' }, nf.format(matches.length)), matches.length ? matchList : message(t.empty), matches.length ? moreMatches : null),
+        recentPanel,
         panel(t.heroStats, el('span', { class: 'ml-auto flex gap-9 text-2xs text-paper-500' }, el('span', {}, t.winRate), el('span', {}, t.kda)), heroes.length ? heroList : message(t.empty), heroes.length ? moreHeroes : null),
       ),
     ];
@@ -1028,6 +1358,11 @@ if (configEl && form && view) {
     svg.innerHTML = `<line x1="0" x2="100" y1="50" y2="50" stroke="currentColor" class="text-line-strong" stroke-dasharray="3 3" vector-effect="non-scaling-stroke"/><polyline points="${line}" fill="none" stroke="currentColor" class="text-brass-400" stroke-width="2" stroke-linejoin="round" vector-effect="non-scaling-stroke"/>`;
     const teamName = (n: number) => fill(t.team, { n });
     const signed = (d: number) => `${d > 0 ? '+' : d < 0 ? '−' : ''}${nf.format(Math.abs(d))}`;
+    /** 점 툴팁 (표, lib/tip.ts) — 시각 | 앞선 팀 · 소울 차 */
+    const soulTip = (p: { ts: number; diff: number }) => {
+      const spec: TipSpec = { h: clock(p.ts), rows: [[p.diff ? fill(t.soulAhead, { team: teamName(p.diff > 0 ? 1 : 2) }) : '—', nf.format(Math.abs(p.diff))]] };
+      return { title: tipText(spec), 'data-tip-rows': tipAttr(spec) };
+    };
     return el(
       'section',
       { class: 'rounded-md bg-ink-900 px-4 py-3 ring-1 ring-line ring-inset' },
@@ -1041,7 +1376,7 @@ if (configEl && form && view) {
           svg,
           ...points.slice(1).map((p) =>
             el('span', {
-              title: `${clock(p.ts)} · ${p.diff ? fill(t.soulAhead, { team: teamName(p.diff > 0 ? 1 : 2) }) : ''} ${nf.format(Math.abs(p.diff))}`.trim(),
+              ...soulTip(p),
               class: 'absolute size-2.5 -translate-1/2 rounded-full bg-brass-400 ring-2 ring-ink-900',
               style: `left:${x(p.ts)}%;top:${y(p.diff)}%`,
             }),
@@ -1152,7 +1487,7 @@ if (configEl && form && view) {
   /** 주소로 바로 들어온 매치 (?match=ID) — 펼치기와 같은 화면을 페이지에 */
   async function renderMatch(matchId: number, from?: number) {
     const my = ++request;
-    show(message(t.loading));
+    show(loading());
     try {
       const loaded = await loadMatch(matchId);
       if (my !== request) return;
@@ -1173,37 +1508,47 @@ if (configEl && form && view) {
   // ─── 주소 ↔ 화면 ───────────────────────────────────────────
   function route() {
     metaPending = null; // 다른 화면으로 가면 이전 플레이어의 뒤늦은 칸 갱신 목록을 버린다
+    mmrPending = null;
     viewingPlayer = undefined;
     const params = new URLSearchParams(location.search);
     const id = params.get('id');
     const q = params.get('q');
     const match = params.get('match');
     const from = params.get('from');
-    if (match && /^\d+$/.test(match)) {
+    const region = params.get('region');
+    const pickRegion = REGIONS.includes(region as Region) ? (region as Region) : REGIONS[0];
+    if (heroPage) {
+      // 모르는 영웅 이름이면 고르기부터
+      void renderLeaderboard(pickRegion, heroBySlug.get(params.get('hero') ?? '') ?? 0);
+    } else if (params.get('board') === 'hero') {
+      // 예전 주소 (?board=hero, #102) → 영웅 순위표 페이지
+      params.delete('board');
+      location.replace(`${cfg.heroBoardPath}${params.toString() ? `?${params}` : ''}`);
+    } else if (match && /^\d+$/.test(match)) {
       input.value = '';
       void renderMatch(Number(match), from && /^\d+$/.test(from) ? Number(from) : undefined);
     } else if (id && /^\d+$/.test(id)) {
       input.value = '';
       // 주소에 SteamID64 를 직접 넣어도 계정 ID 로 (검색창과 같은 해석)
       const parsed = parsePlayerInput(id);
-      void renderPlayer('id' in parsed ? parsed.id : Number(id));
+      void renderPlayer('id' in parsed ? parsed.id : Number(id), params.get('hero') ?? undefined);
     } else if (q) {
       input.value = q;
       void renderSearch(q);
     } else {
       input.value = '';
-      const region = params.get('region');
-      const fallback: Region = cfg.locale.startsWith('en') ? 'NAmerica' : 'Asia';
-      void renderLeaderboard(REGIONS.includes(region as Region) ? (region as Region) : fallback);
+      void renderLeaderboard(pickRegion);
     }
   }
   const go = (search: string) => {
+    // 영웅 순위표 페이지의 줄은 전적 페이지로 넘어간다 (search 가 '?…' 면 전적 페이지 주소를 붙인다)
+    if (heroPage) return location.assign(search.startsWith('?') ? `${cfg.playersPath}${search}` : search);
     history.pushState(null, '', `${location.pathname}${search}`);
     route();
     window.scrollTo({ top: 0 });
   };
 
-  form.addEventListener('submit', (e) => {
+  form?.addEventListener('submit', (e) => {
     e.preventDefault();
     const parsed = parsePlayerInput(input.value);
     if (!('id' in parsed) && !parsed.query) return;

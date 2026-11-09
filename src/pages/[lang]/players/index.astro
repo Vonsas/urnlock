@@ -7,7 +7,8 @@
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import PageHead from '../../../components/PageHead.astro';
 import { LOCALE_META, LOCALES, localePath, toLocale, useTranslations } from '../../../i18n';
-import { getHeroes, getItems, getRanks, PLAYER_API_BASE } from '../../../data';
+import { getHeroes, getItems, getLeaderboardInfo, getRanks, PLAYER_API_BASE } from '../../../data';
+import { leaderboardFile } from '../../../data/api/leaderboard';
 import { gameImage } from '../../../lib/images';
 import type { PlayerPageConfig } from '../../../scripts/players';
 
@@ -17,12 +18,13 @@ export function getStaticPaths() {
 
 const lang = toLocale(Astro.params.lang);
 const t = useTranslations(lang);
-const [heroes, ranks, items] = await Promise.all([getHeroes(lang), getRanks(lang), getItems(lang)]);
+const [heroes, ranks, items, leaderboard] = await Promise.all([getHeroes(lang), getRanks(lang), getItems(lang), getLeaderboardInfo()]);
 
 const config: PlayerPageConfig = {
   api: PLAYER_API_BASE,
   locale: LOCALE_META[lang].htmlLang,
-  heroPath: localePath(lang, 'heroes'),
+  playersPath: localePath(lang, 'players'),
+  heroBoardPath: localePath(lang, 'players/heroes'),
   heroes: Object.fromEntries(
     await Promise.all(
       heroes
@@ -41,6 +43,10 @@ const config: PlayerPageConfig = {
   ranks: Object.fromEntries(
     await Promise.all(ranks.map(async (r) => [r.tier, { name: r.name, icon: await gameImage(r.image, 96, 96) }] as const)),
   ),
+  // 순위표의 계정 · 프로필 사진 · 주 영웅 — 그 지역을 열 때만 받는 파일 (/data/leaderboard-….json)
+  ...(leaderboard
+    ? { leaderboard: Object.fromEntries(Object.keys(leaderboard.regions).map((r) => [r, `/data/${leaderboardFile(r as keyof typeof leaderboard.regions, leaderboard.generatedAt)}.json`])) }
+    : {}),
   t: { ...t.players, souls: t.common.souls },
 };
 // </script> 로 JSON 이 끊기지 않게
@@ -61,7 +67,7 @@ const configJson = JSON.stringify(config).replace(/</g, '\\u003c');
     </button>
   </form>
 
-  <div data-player-view aria-live="polite" class="mt-6"></div>
+  <div data-player-view aria-live="polite" class="mt-6 min-h-svh"></div>
 
   <p class="mt-10 max-w-3xl text-xs text-paper-400">{t.players.note}</p>
 

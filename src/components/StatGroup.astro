@@ -33,7 +33,7 @@ const rankTone = (r: { rank: number; total: number }) =>
 ---
 
 <section class="panel px-4 pt-4 pb-3 sm:px-5">
-  <h3 class="flex min-w-0 items-center gap-2 text-base font-bold">
+  <h3 class="flex min-w-0 items-center gap-2 text-base font-semibold">
     <span class:list={['size-2 flex-none rounded-full', dot]} aria-hidden="true"></span>
     <span class={text}>{title}</span>
     {subtitle && <span class="min-w-0 truncate text-sm font-medium text-paper-400">{subtitle}</span>}
@@ -66,7 +66,7 @@ const rankTone = (r: { rank: number; total: number }) =>
             <td
               class:list={[
                 'w-24 py-2 text-right whitespace-nowrap tabular-nums sm:w-32',
-                l.max ? 'font-bold text-paper-50' : 'text-paper-500',
+                l.max ? 'font-semibold text-paper-50' : 'text-paper-500',
               ]}
             >
               {l.max ?? l.value}

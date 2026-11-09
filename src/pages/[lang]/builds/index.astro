@@ -15,7 +15,7 @@ const configJson = await buildsPageConfig(lang);
 
 <BaseLayout lang={lang} seoTitle={t.seo.builds} title={t.nav.builds} description={t.buildsPage.lede}>
   <PageHead title={t.nav.builds} />
-  <div data-builds-view></div>
+  <div data-builds-view class="min-h-svh"></div>
   <p class="mt-8 max-w-3xl text-xs text-paper-400">{t.buildsPage.note}</p>
   <script type="application/json" id="builds-config" set:html={configJson} />
 </BaseLayout>

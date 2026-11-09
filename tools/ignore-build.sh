@@ -25,8 +25,8 @@ if ! changed="$(git diff --name-only "$prev" "$cur" 2>/dev/null)"; then
   exit 1
 fi
 
-# 문서 = docs/ · 모든 .md · 에이전트 설정(.claude/) · GitHub 워크플로(.github/) — 사이트 빌드 결과에 들어가지 않는 것
-code="$(printf '%s\n' "$changed" | grep -vE '^(docs/|\.claude/|\.github/)|\.md$' | grep -v '^$' || true)"
+# 문서 = docs/ · 모든 .md · 에이전트 설정(.claude/) · GitHub 워크플로(.github/) · 따로 올리는 Cloudflare Worker(workers/) — 사이트 빌드 결과에 들어가지 않는 것
+code="$(printf '%s\n' "$changed" | grep -vE '^(docs/|\.claude/|\.github/|workers/)|\.md$' | grep -v '^$' || true)"
 if [ -z "$code" ]; then
   echo "건너뜀: ${prev:0:7}..${cur:0:7} 사이에 문서만 바뀜"
   printf '%s\n' "$changed" | sed 's/^/  /'

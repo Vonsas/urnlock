@@ -9,8 +9,6 @@
  *     [data-filter-group]                 안의 항목이 모두 숨으면 함께 숨김
  *     [data-filter-empty]                 결과가 없을 때 표시
  *     [data-filter-count][data-template]  '{n}개 표시'
- *     button[data-view]                   보기 전환 → 루트의 data-view 값 (localStorage 에 기억)
- *     button[data-sort] (table 안)        숫자 열 정렬
  */
 import { norm } from './normalize';
 
@@ -27,7 +25,6 @@ function setup(root: HTMLElement) {
   const apply = () => {
     const q = norm(text?.value ?? '');
     const onFlags = flags.filter((f) => f.checked).map((f) => f.dataset.filterFlag!);
-    // 같은 항목이 격자·표 두 곳에 있으므로 이름 기준으로 센다
     const visible = new Set<string>();
     for (const el of items) {
       const ok =
@@ -60,53 +57,6 @@ function setup(root: HTMLElement) {
     if (q) text.value = q;
     text.addEventListener('input', apply);
   }
-
-  // 보기 전환 (카드 / 표)
-  const views = [...root.querySelectorAll<HTMLButtonElement>('[data-view]')];
-  const storeKey = `dldb:view:${root.dataset.filter}`;
-  const setView = (v: string) => {
-    root.dataset.viewMode = v;
-    views.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.view === v)));
-  };
-  if (views.length) {
-    try {
-      const saved = localStorage.getItem(storeKey);
-      if (saved && views.some((b) => b.dataset.view === saved)) setView(saved);
-    } catch {
-      /* 저장소 접근 불가 */
-    }
-    views.forEach((b) =>
-      b.addEventListener('click', () => {
-        setView(b.dataset.view!);
-        try {
-          localStorage.setItem(storeKey, b.dataset.view!);
-        } catch {
-          /* 무시 */
-        }
-      }),
-    );
-  }
-
-  // 표 정렬
-  root.querySelectorAll<HTMLButtonElement>('[data-sort]').forEach((btn) => {
-    btn.addEventListener('click', () => {
-      const table = btn.closest('table');
-      const body = table?.tBodies[0];
-      if (!table || !body) return;
-      const key = btn.dataset.sort!;
-      const th = btn.closest('th')!;
-      const desc = th.getAttribute('aria-sort') !== 'descending';
-      table.querySelectorAll('th[aria-sort]').forEach((h) => h.removeAttribute('aria-sort'));
-      th.setAttribute('aria-sort', desc ? 'descending' : 'ascending');
-      const rows = [...body.rows].sort((a, b) => {
-        const av = a.dataset[key] ?? '';
-        const bv = b.dataset[key] ?? '';
-        const diff = isNaN(+av) ? av.localeCompare(bv) : +av - +bv;
-        return desc ? -diff : diff;
-      });
-      body.append(...rows);
-    });
-  });
 
   apply();
 }

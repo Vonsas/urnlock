@@ -3,7 +3,7 @@
  *
  * 예전엔 Steam 글을 모두 패치로 봤다 (제목에 'Update' 가 없는 대형 패치 'City Never Sleeps' 를 제목 필터가 놓친 일 때문).
  * 그런데 2026-10-02 부터 새 영웅이 화·금마다 출시되며 소개 공지("Listen up, Crumbums! Your King is here.")가 올라와,
- * 이게 패치로 잡히면 '현재 패치' 기간이 하루로 줄어 승률표 기본 화면의 표본이 사라진다. 그래서 영웅 출시 공지는 뺀다.
+ * 이게 패치로 잡히면 '현재 패치' 기간이 하루로 줄어 그 기간의 표본이 사라진다 (그때는 승률표 기본 화면 — 2026-11-05 부터 기본은 최근 7일). 그래서 영웅 출시 공지는 뺀다.
  * - 자동: 출시 문구('available to play' · 'available now' · 'introduce our next hero')가 있고 **변경 목록('- ' 줄)이 거의 없는** 글.
  *   2026-10-07 바바 공지 'Mind the Birds!' 가 'available now' 라 예전 판별('available to play' 만)을 빠져나가 패치로 잡혔다.
  *   변경 목록 조건은 진짜 패치가 '… is available now' 를 쓰더라도 빠지지 않게 하려는 것 (패치 13편은 모두 목록이 있거나 출시 문구가 없음, 2026-10-07 확인).
@@ -23,6 +23,15 @@ const NOT_PATCH_LINKS: string[] = [
   'https://store.steampowered.com/news/app/1422450/view/669505296465396778',
 ];
 
+/**
+ * 패치노트에는 보이지만 '현재 패치' 기간을 새로 시작하지 않는 글 — 게임 밸런스가 안 바뀌는 공지 (2026-11-06 사용자).
+ * 넣는 기준: 영웅 · 아이템 수치 변경이 없는 글. 작은 밸런스 패치는 넣지 않는다 (아이템 하나도 승률을 바꾼다).
+ */
+const NOT_PATCH_BOUNDARY_LINKS: string[] = [
+  // 2026-11-06 'Ranked - Beta Season 2' — 랭크 시즌 시작 · 랭크 재분배 공지
+  'https://store.steampowered.com/news/app/1422450/view/680766201707627248',
+];
+
 const RELEASE_RE = /available (to play|now|in-game)|introduce our next hero|(joins|joining) us (today|on the streets)/i;
 /** 변경 목록 줄이 이만큼 있으면 출시 문구가 있어도 패치로 본다 */
 const PATCH_LIST_LINES = 5;
@@ -40,4 +49,9 @@ export function isPatchPost(p: RawPatch): boolean {
     warn(`패치가 아닌 공지로 보고 뺌: ${p.pub_date.slice(0, 10)} '${p.title.trim()}'`);
   }
   return !skip;
+}
+
+/** 티어 · 통계의 현재/이전 패치 기간을 나누는 글 */
+export function startsPatchWindow(p: RawPatch): boolean {
+  return isPatchPost(p) && !(p.link && NOT_PATCH_BOUNDARY_LINKS.includes(p.link));
 }

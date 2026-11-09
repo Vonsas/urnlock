@@ -1,0 +1,59 @@
+---
+/**
+ * 영웅 순위표 — Valve 의 영웅별 게임 순위표 (2026-11-04 사용자: 순위표와 아예 다른 페이지로). 주소 ?hero=slug&region=.
+ * 화면은 전적 페이지와 같은 scripts/players.ts 가 그린다 (config.board = 'hero') — 검색창 · 아이템 정보는 싣지 않는다.
+ */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHead from '../../../components/PageHead.astro';
+import { LOCALE_META, LOCALES, localePath, toLocale, useTranslations } from '../../../i18n';
+import { getHeroes, getLeaderboardInfo, getRanks, PLAYER_API_BASE } from '../../../data';
+import { leaderboardFile } from '../../../data/api/leaderboard';
+import { gameImage } from '../../../lib/images';
+import type { PlayerPageConfig } from '../../../scripts/players';
+
+export function getStaticPaths() {
+  return LOCALES.map((lang) => ({ params: { lang } }));
+}
+
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const [heroes, ranks, leaderboard] = await Promise.all([getHeroes(lang), getRanks(lang), getLeaderboardInfo()]);
+
+const config: PlayerPageConfig = {
+  api: PLAYER_API_BASE,
+  locale: LOCALE_META[lang].htmlLang,
+  board: 'hero',
+  playersPath: localePath(lang, 'players'),
+  heroBoardPath: localePath(lang, 'players/heroes'),
+  heroes: Object.fromEntries(
+    await Promise.all(
+      heroes
+        .filter((h) => h.id !== undefined)
+        .map(async (h) => [h.id!, { name: h.name, slug: h.slug, icon: await gameImage(h.image?.small, 64, 64) }] as const),
+    ),
+  ),
+  items: {},
+  ranks: Object.fromEntries(
+    await Promise.all(ranks.map(async (r) => [r.tier, { name: r.name, icon: await gameImage(r.image, 96, 96) }] as const)),
+  ),
+  // 같은 지역 순위표의 계정 · 사진 · 티어 — 영웅 순위표 줄의 계정을 정할 때도 쓴다 (그 지역을 열 때만 받음)
+  ...(leaderboard
+    ? { leaderboard: Object.fromEntries(Object.keys(leaderboard.regions).map((r) => [r, `/data/${leaderboardFile(r as keyof typeof leaderboard.regions, leaderboard.generatedAt)}.json`])) }
+    : {}),
+  t: { ...t.players, souls: t.common.souls },
+};
+// </script> 로 JSON 이 끊기지 않게
+const configJson = JSON.stringify(config).replace(/</g, '\u003c');
+---
+
+<BaseLayout lang={lang} seoTitle={t.seo.heroBoard} title={t.players.hlbTitle} description={t.seo.heroBoardDesc}>
+  <PageHead title={t.players.hlbTitle} />
+
+  <div data-player-view aria-live="polite"></div>
+
+  <script type="application/json" id="player-config" set:html={configJson} />
+</BaseLayout>
+
+<script>
+  import '../../../scripts/players.ts';
+</script>

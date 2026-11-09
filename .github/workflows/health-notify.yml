@@ -1,5 +1,6 @@
 # 배포 결과 알림 (2026-10-29) — Vercel 이 Production 배포 결과(성공 · 실패)를 GitHub 에 알리면 돈다.
 # 성공: 배포된 /health.json 을 읽어 번역 필요 · 새 영웅 · 새 패치를 이슈로 열고 닫는다. 실패: '배포 빌드가 실패했어요' 이슈.
+# Pages 는 따로 배포 알림이 없다 — Vercel 운영 빌드가 같은 dist 를 Pages 에도 올리므로(#53) 이 성공 알림에서 pages.dev 반영까지 본다.
 # 저장소 시크릿 DISCORD_WEBHOOK(디스코드 채널 설정 → 연동 → 웹후크 주소)이 있으면 같은 알림을 그 채널에도 보낸다.
 # 예전엔 daily-rebuild 가 배포 반영을 최대 20분 기다리며 확인해 Actions 무료 시간을 대부분 썼다 — 이제 결과가 왔을 때 1분 안팎만 돈다.
 name: health-notify
@@ -36,6 +37,8 @@ jobs:
           DISCORD_WEBHOOK: ${{ secrets.DISCORD_WEBHOOK }}
           DEPLOY_DESCRIPTION: ${{ github.event.deployment_status.description }}
           DEPLOY_URL: ${{ github.event.deployment_status.target_url }}
+          # 저장소 변수 PAGES_DEPLOY=1 — Vercel 빌드가 Pages 에도 올리게 된 뒤(Cloudflare 토큰을 Vercel 에 넣은 뒤) pages.dev 반영을 확인 (#53)
+          PAGES_DEPLOY: ${{ vars.PAGES_DEPLOY }}
         run: |
           if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
             node tools/check-health.mjs --test

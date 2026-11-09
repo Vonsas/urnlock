@@ -41,12 +41,13 @@ import { limited } from './_lib/limit.js';
 
 const heroParam = (v: unknown) => {
   const n = Number(v);
-  return Number.isInteger(n) && n >= 0 && n < 10_000 ? n : null; // 0 = 일반 가이드
+  return Number.isInteger(n) && n >= 0 && n < 10_000 ? n : null; // 0 = 게임 가이드
 };
 
 /** 목록 · 한 편 · 내 정보(me) GET 이 받는 값 — 그 밖의 값이 붙은 주소는 저장소를 읽기 전에 거절 (아무 값이나 붙여 CDN 캐시를 비켜 가며 무료 한도를 쓰지 못하게, 2026-10-14 점검) */
 const GET_PARAMS = new Set(['id', 'hero', 'sort', 'me']);
 // stale-if-error — 저장소가 멈춰 503 이면 CDN 이 하루 동안 옛 응답을 대신 준다 (Vercel CDN 지원, #21)
+// CDN 이 주소만으로 캐시하므로, 이 응답은 요청 헤더 · 쿠키 · 방문자(clientIp · originOf)에 따라 달라지면 안 된다 (#59 리뷰)
 const PUBLIC_CACHE = { 'cache-control': 'public, s-maxage=60, stale-while-revalidate=300, stale-if-error=86400' };
 
 export async function GET(request: Request): Promise<Response> {
@@ -71,7 +72,7 @@ export async function GET(request: Request): Promise<Response> {
       // 쿠키를 읽지 않는다 — 누가 받아도 같은 응답이라 CDN 이 나눠 줘도 된다 (익명 글은 toGuide 가 계정을 지운 값)
       return json({ guide: toGuide(g, votes, null) }, 200, PUBLIC_CACHE);
     }
-    // hero=heroes → 영웅 가이드 전체 (일반 가이드 빼고). 따로 묶음이 없어 전체 앞쪽 200편에서 거른다
+    // hero=heroes → 영웅 가이드 전체 (게임 가이드 빼고), hero=0 → 게임 가이드. 따로 묶음이 없어 전체 앞쪽 200편에서 거른다
     const heroesOnly = q.get('hero') === 'heroes';
     const hero = q.has('hero') && !heroesOnly ? heroParam(q.get('hero')) : undefined;
     if (hero === null) return json({ error: 'hero' }, 400);
@@ -136,7 +137,9 @@ async function parse(request: Request): Promise<{ body: Record<string, unknown>;
   } catch {
     return fail('server');
   }
-  const hero = body.hero === null || body.hero === undefined ? null : heroParam(body.hero);
+  if (!body || typeof body !== 'object') return fail('server'); // JSON null · 숫자 (#78)
+  // 숫자만 — Number('') · Number(false) · Number([]) 가 0(게임 가이드)이 되지 않게 (#115 리뷰)
+  const hero = typeof body.hero === 'number' ? heroParam(body.hero) : null;
   if (typeof body.title !== 'string' || !Array.isArray(body.sections) || body.sections.length > SECTIONS_MAX) return fail('server');
   const sections: GuideSection[] = [];
   for (const raw of body.sections as unknown[]) {
@@ -215,8 +218,8 @@ export async function POST(request: Request): Promise<Response> {
     const parsed = await parse(request);
     if (parsed instanceof Response) return parsed;
     const { input } = parsed;
-    // 실제 출시 영웅만 (일반 가이드 0 · 없는 번호는 안 됨)
-    if (!(await isHeroId(input.hero))) return fail('hero');
+    // 게임 가이드(0, 2026-11-04 다시 받음) 또는 실제 출시 영웅만 — 없는 번호는 안 됨
+    if (input.hero !== GENERAL && !(await isHeroId(input.hero))) return fail('hero');
     // 사진 확인을 한도 세기 전에 — 거절된 글이 하루 3편을 깎지 않게
     const fresh = await attachImages(input.sections, session);
     if (!fresh) return fail('server');
@@ -266,16 +269,19 @@ export async function PUT(request: Request): Promise<Response> {
     const [old] = await loadGuides([body.id]);
     if (!old) return fail('server', 404);
     if (old.accountId !== session.a) return fail('auth', 403);
-    // 영웅은 실제 출시 영웅만 — 예전 일반 가이드(0)를 고칠 때는 그대로 두는 것만 허용
-    if (input.hero !== old.hero && !(await isHeroId(input.hero))) return fail('hero');
+    // 게임 가이드(0) 또는 실제 출시 영웅만
+    if (input.hero !== old.hero && input.hero !== GENERAL && !(await isHeroId(input.hero))) return fail('hero');
     if ((await bump(`rate:guide-edit:${session.a}:${new Date().toISOString().slice(0, 10)}`, 2 * 86400)) > 30) return fail('rate', 429);
 
     const keep = new Map(old.sections.flatMap((x) => x.images.filter((im) => im.url).map((im) => [im.url, im] as const)));
     const fresh = await attachImages(input.sections, session, keep);
     if (!fresh) return fail('server');
     const now = Math.floor(Date.now() / 1000);
-    const next: StoredGuide = { ...old, ...input, updatedAt: now };
-    await redis('SET', guideKey(old.id), JSON.stringify(next));
+    // 영웅을 바꾸면 '기록상 n판' 도 그 영웅 것으로 (게임 가이드는 판수 없음) — 옛 영웅 판수가 남지 않게 (#115 리뷰)
+    const games = input.hero === old.hero ? old.games : input.hero === GENERAL ? null : (await authorSnapshot(session.a, input.hero)).games;
+    const next: StoredGuide = { ...old, ...input, games, updatedAt: now };
+    // XX — 읽은 뒤 그사이 지워졌으면(본인 삭제 · 운영자 내리기 · 차단) 되살리지 않는다 (#78)
+    if ((await redis<string | null>('SET', guideKey(old.id), JSON.stringify(next), 'XX')) === null) return fail('server', 404);
 
     // 영웅을 바꿨으면 영웅별 목록도 옮긴다 (추천 수는 전체 목록의 점수가 원본)
     if (next.hero !== old.hero) {

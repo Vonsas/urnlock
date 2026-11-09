@@ -22,6 +22,11 @@ import { LOCALES } from '../i18n';
  * 이때만 직전 배포와 비교하고, 문제가 있으면 빌드를 멈춘다.
  */
 const STRICT = Boolean(process.env.VERCEL) || process.env.HEALTH_STRICT === '1';
+/**
+ * www 가 Cloudflare Pages 로 넘어간 뒤(⑥, Vercel 환경 변수 PAGES_PRIMARY=1)엔 Vercel 빌드를 멈추지 않는다 — 점검 문제로 `/api` 배포까지 막히지 않게.
+ * 대신 tools/build-pages-config.mjs 가 problems 를 보고 Pages 올리기만 하지 않는다 (www = 직전 Pages 배포). docs/plan-cloudflare-split.md 2절
+ */
+const STOP_BUILD = STRICT && !(process.env.VERCEL && process.env.PAGES_PRIMARY === '1');
 
 interface Health {
   builtAt: number;
@@ -94,7 +99,7 @@ export const GET: APIRoute = async ({ site }) => {
 
   // 배포 빌드에서 문제가 있으면 멈춘다 — 틀린 티어를 올리느니 어제 것을 그대로 둔다. 로컬에선 경고만 (tier-check 가 남김)
   // 미리보기(가벼운 빌드)는 티어 데이터를 일부러 안 받으므로 멈추지 않는다 — 실제 배포만
-  if (problems.length && STRICT && !LIGHT_BUILD) {
+  if (problems.length && STOP_BUILD && !LIGHT_BUILD) {
     throw new Error(`[dldb:health] 점검 실패로 배포를 멈춤 (직전 배포 유지):\n- ${problems.join('\n- ')}`);
   }
   return new Response(JSON.stringify(health, null, 1), { headers: { 'Content-Type': 'application/json' } });

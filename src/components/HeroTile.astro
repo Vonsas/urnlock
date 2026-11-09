@@ -20,6 +20,7 @@ const { hero: h, lang, compact = false, alt } = Astro.props;
       name={h.name}
       image={h.image}
       size={compact ? 'md' : 'lg'}
+      sizes={compact ? undefined : '(min-width: 640px) 9rem, calc((100vw - 5rem) / 4)'}
       class:list={[
         'w-full ring-1 ring-line transition-[box-shadow] duration-150 ring-inset group-hover:ring-2 group-hover:ring-brass-400/70',
         compact ? 'aspect-square' : 'aspect-[280/380]',
@@ -28,7 +29,7 @@ const { hero: h, lang, compact = false, alt } = Astro.props;
     <p
       class:list={[
         'mt-1.5 truncate font-semibold text-paper-200 transition-colors duration-150 group-hover:text-paper-50',
-        compact ? 'text-center text-xs' : 'text-sm',
+        compact ? 'text-center text-xs' : 'text-xs sm:text-sm',
       ]}
     >
       {h.name}

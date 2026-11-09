@@ -39,7 +39,7 @@ import SoulIcon from './SoulIcon.astro';
 
 <div>
   <!-- 머리 (오른쪽 위는 닫기 단추 자리) -->
-  <div class="flex items-start gap-3.5 px-5 pt-5 pr-14 pb-4">
+  <div data-detail-head class="flex items-start gap-3.5 px-5 pt-5 pr-14 pb-4">
     <span class="size-14 flex-none overflow-hidden rounded-xs bg-ink-900">
       {src && <img src={src} alt="" loading="lazy" decoding="async" class="size-full object-cover" />}
     </span>
@@ -49,11 +49,12 @@ import SoulIcon from './SoulIcon.astro';
         {t.items.categories[i.category]} · {fill(t.items.tier, { n: i.tier })}
         {i.isActive && <span class="text-brass-400"> · {t.items.active}</span>}
       </p>
-      <p class="mt-1.5 flex items-center gap-1.5 text-sm font-bold text-paper-50 tabular-nums">
+      <!-- 가격 줄 — 오른쪽 끝에 상세 창의 [정보 | 통계] 단추가 붙는다 (items/index.astro, data-detail-cost) -->
+      <div data-detail-cost class="mt-1.5 flex flex-wrap items-center gap-1.5 text-sm font-bold text-paper-50 tabular-nums">
         <SoulIcon />
         {formatNumber(lang, i.cost)}
         <span class="text-xs font-normal text-paper-500">{t.common.souls}</span>
-      </p>
+      </div>
     </div>
   </div>
 

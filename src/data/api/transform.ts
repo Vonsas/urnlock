@@ -632,6 +632,42 @@ function noteLines(html: string): string[] {
     .filter(Boolean);
 }
 
+/** 공지형 글의 줄 — noteLines 와 같은 글자에 Steam 이 쓴 구조만 더한다: 앞에 가로줄(<hr> 또는 대시만 있는 줄 '------')이 있는지, 줄 전체가 굵은 글씨 · bb_h 머리인지, <li> 인지 (2026-11-06 사용자: 공지는 Steam 처럼 필요한 곳만 줄로) */
+function noticeLines(html: string): Array<{ text: string; head: boolean; bold: boolean; li: boolean; rule: boolean }> {
+  const out: Array<{ text: string; head: boolean; bold: boolean; li: boolean; rule: boolean }> = [];
+  let rule = false;
+  const pieces = html
+    .replace(/<hr\b[^>]*>(?:<\/hr>)?/gi, '\n<hr>\n')
+    .replace(/<br\s*\/?>|<\/(p|li|div|h\d)>/gi, '\n')
+    .split('\n');
+  for (const piece of pieces) {
+    if (piece.trim() === '<hr>') {
+      rule = true;
+      continue;
+    }
+    // 줄 앞의 목록 · 문단 태그는 판정에서 뺀다. 닫는 태그도 — </ul> 뒤에서 줄이 안 바뀌어 다음 줄이 '</ul><b>제목</b>' 으로 온다
+    const inner = piece.replace(/^(?:\s*<\/?(?:p|ul|ol|li)\b[^>]*>)+/i, '').trim();
+    const head = /^<div[^>]*\bbb_h\d\b/i.test(inner);
+    const bold = /^(?:<div[^>]*>)?<(b|strong)>(?:(?!<\/?\1>).)*<\/\1>$/i.test(inner);
+    const li = /^(?:\s*<\/?(?:ul|ol)\b[^>]*>)*\s*<li\b/i.test(piece);
+    const text = piece
+      .replace(/<[^>]+>/g, '')
+      .replace(/&(#?\w+);/g, (m, code: string) => ENTITIES[code] ?? m)
+      .replace(/\\\[/g, '[')
+      .replace(/\s+/g, ' ')
+      .trim();
+    if (!text) continue;
+    // 대시만 있는 줄('------')은 글로 쓴 가로줄 — 번역할 글이 아니다 (2026-11-06 랭크 공지가 API 에 들어오며 번역 대상으로 잡혔다)
+    if (/^-{3,}$/.test(text)) {
+      rule = true;
+      continue;
+    }
+    out.push({ text, head, bold, li, rule });
+    rule = false;
+  }
+  return out;
+}
+
 /**
  * 공식 패치노트 전체 (Steam 쪽 글, 최신순). 포럼 글은 같은 패치의 Steam 링크뿐이라 뺀다.
  *
@@ -655,11 +691,20 @@ export function toPatchNotes(raw: RawPatch[], heroes: Hero[], enHeroes: Hero[], 
   };
   const heroBy = lookup(heroes, enHeroes);
   const itemBy = lookup(items, enItems);
+  // 원문이 새 영웅을 이름 한 단어로만 쓰기도 한다 ('Nurse: …' = Nurse Harrow, 2026-10-30 패치) → 한 영웅에만 있는 단어면 그 영웅으로 (아이템 이름이 먼저)
+  const heroWords = new Map<string, Hero | null>();
+  for (const h of enHeroes)
+    for (const w of h.name.toLowerCase().split(/[^a-z0-9]+/).filter((x) => x.length > 2 && x !== 'the' && x !== 'and'))
+      heroWords.set(w, heroWords.has(w) ? null : h);
+  const heroByWord = (name: string) => {
+    const h = heroWords.get(norm(name));
+    return h ? heroBy.get(h.name) : undefined;
+  };
   // 영웅 줄이 어느 능력 얘기인지 — 원문(영어) 속 능력 영어 이름 중 가장 앞에 나온 것. 이름이 바뀐 옛 능력은 못 찾아 기본 줄로 남는다
   const escapeRe = (x: string) => x.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const abilityRe = (name: string) => new RegExp(`(^|[^a-z])${escapeRe(name.toLowerCase())}($|[^a-z])`);
   const enAbilities = new Map(
-    enHeroes.map((h) => [h.slug, (h.detail?.abilities ?? []).filter((a) => a.name).map((a) => ({ slot: a.slot, re: abilityRe(a.name) }))]),
+    enHeroes.map((h) => [h.slug, (h.detail?.abilities ?? []).filter((a) => a.name).map((a) => ({ slot: a.slot, name: a.name, re: abilityRe(a.name) }))]),
   );
   const localAbilities = new Map(heroes.map((h) => [h.slug, h.detail?.abilities ?? []]));
   const abilityOf = (slug: string, text: string): PatchLine['ability'] => {
@@ -678,7 +723,10 @@ export function toPatchNotes(raw: RawPatch[], heroes: Hero[], enHeroes: Hero[], 
     .sort((a, b) => b.pub_date.localeCompare(a.pub_date))
     .map((p) => {
       const lines = noteLines(p.content);
-      const isHead = (l: string) => /^\[\s*.+?\s*\]$/.test(l);
+      // 구역 머리: '[ General ]', 또는 굵은 글씨 'General:' (2026-10-30 패치부터 — 'Heroes:' 같은 머리가 있는 글에서만. 공지형 글의 'Primary details:' 는 머리가 아니다)
+      const colonHeads = lines.some((l) => /^(General|Items|Heroes):$/.test(l));
+      const headOf = (l: string) => l.match(/^\[\s*(.+?)\s*\]$/)?.[1] ?? (colonHeads ? l.match(/^([A-Z][A-Za-z &]{1,24}):$/)?.[1] : undefined);
+      const isHead = (l: string) => headOf(l) !== undefined;
       const bullets = lines.filter((l) => l.startsWith('-')).length;
       const listMode = lines.some(isHead) || bullets >= lines.length * 0.7;
 
@@ -688,12 +736,22 @@ export function toPatchNotes(raw: RawPatch[], heroes: Hero[], enHeroes: Hero[], 
 
       if (!listMode) {
         const intro: PatchSection = { key: 'intro', blocks: [] };
-        for (const l of lines) {
+        let ruleNext = false;
+        for (const { text: l, head, bold, li: inList, rule } of noticeLines(p.content)) {
+          ruleNext ||= rule;
           if (l === '-') continue;
           const b = l.match(/^-\s*(.+)$/);
-          // 소문자 없이 짧은 줄은 소제목 ('STANDARD MODE', 'UPDATED RANKS & BADGES')
-          const heading = !b && l.length <= 60 && /[A-Z]/.test(l) && !/[a-z]/.test(l);
-          intro.blocks.push(b ? { type: 'li', text: b[1] } : heading ? { type: 'h', text: l.replace(/:$/, '') } : { type: 'p', text: l });
+          // 소문자 없이 짧은 줄은 소제목 ('STANDARD MODE', 'UPDATED RANKS & BADGES') — 콜론은 뗀다.
+          // 줄 전체가 굵은 글씨면 Steam 에서도 소제목처럼 보이는 줄 ('Seasonal Rank Reset') — 번역 사전 키가 원문 그대로라 글자는 안 바꾼다
+          const caps = !b && l.length <= 60 && /[A-Z]/.test(l) && !/[a-z]/.test(l);
+          // 굵기만 한 줄은 주소가 들었거나 마침표 · 느낌표로 끝나면 문장 ('Check out everything that's new at: 주소'). 물음표는 소제목일 수 있어 둔다. bb_h 는 Steam 이 머리로 쓴 줄이라 그대로 소제목
+          const heading = caps || (!b && l.length <= 80 && (head || (bold && !/https?:\/\/|[.!]$/.test(l))));
+          const li = b ? b[1] : inList ? l : undefined;
+          const block: PatchBlock = li !== undefined ? { type: 'li', text: li } : heading ? { type: 'h', text: caps ? l.replace(/:$/, '') : l } : { type: 'p', text: l };
+          // 맨 앞 가로줄은 그을 필요가 없다 (머리 띠 바로 아래)
+          if (ruleNext && intro.blocks.length) block.rule = true;
+          ruleNext = false;
+          intro.blocks.push(block);
         }
         sections = intro.blocks.length ? [intro] : [];
       } else {
@@ -717,14 +775,14 @@ export function toPatchNotes(raw: RawPatch[], heroes: Hero[], enHeroes: Hero[], 
 
         for (const line of lines) {
           if (line === '-') continue;
-          const head = line.match(/^\[\s*(.+?)\s*\]$/);
+          const head = headOf(line);
           if (head) {
-            const key = head[1].toLowerCase();
+            const key = head.toLowerCase();
             if (key === 'general') current = general;
             else if (key === 'items') current = itemSec;
             else if (key === 'heroes') current = heroSec;
             else {
-              current = { key: 'other', heading: head[1], blocks: [] };
+              current = { key: 'other', heading: head, blocks: [] };
               others.push(current);
             }
             last = null;
@@ -744,21 +802,24 @@ export function toPatchNotes(raw: RawPatch[], heroes: Hero[], enHeroes: Hero[], 
           }
           const target = bullet[1].match(/^([^:]{2,40}):\s*(.+)$/);
           const name = target?.[1].trim() ?? '';
-          const hero = target && heroBy.get(name);
-          const item = target && !hero && itemBy.get(name);
+          const exact = target && heroBy.get(name);
+          const item = target && !exact && itemBy.get(name);
+          const hero = exact || (target && !item ? heroByWord(name) : undefined);
+          // 기타 구역('Street Brawl:' 등) 안의 영웅·아이템 줄은 그 구역 안에서 묶는다 — 일반 영웅 변경과 섞이면 영웅 상세 '최근 패치 변경' 에 그 모드 전용 줄이 나온다
+          const inOther = current.key === 'other';
           if (target && hero) {
-            const g = group(heroSec, 'hero', hero.slug, hero.name, hero.slug);
+            const g = group(inOther ? current : heroSec, 'hero', hero.slug, hero.name, hero.slug);
             const text = target[2].trim();
             const slot = abilityOf(hero.slug, text);
             const a = slot && localAbilities.get(hero.slug)?.find((x) => x.slot === slot);
             g.lines.push(a ? { text, ability: a.slot } : { text });
-            if (a && !g.abilities?.some((x) => x.slot === a.slot)) (g.abilities ??= []).push({ slot: a.slot, name: a.name, image: a.image });
-            heroSlugs.add(hero.slug);
+            if (a && !g.abilities?.some((x) => x.slot === a.slot)) (g.abilities ??= []).push({ slot: a.slot, name: a.name, enName: enAbilities.get(hero.slug)?.find((x) => x.slot === a.slot)?.name, image: a.image });
+            if (!inOther) heroSlugs.add(hero.slug);
             last = { block: g };
           } else if (target && item) {
-            const g = group(itemSec, 'item', item.slug, item.name, item.slug);
+            const g = group(inOther ? current : itemSec, 'item', item.slug, item.name, item.slug);
             g.lines.push({ text: target[2].trim() });
-            itemSlugs.add(item.slug);
+            if (!inOther) itemSlugs.add(item.slug);
             last = { block: g };
           } else if (target && (current === heroSec || current === itemSec)) {
             // 영웅·아이템 구역인데 사이트에 없는 대상 (예전 이름 등) → 원문 이름으로 묶는다

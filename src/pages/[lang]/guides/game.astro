@@ -1,0 +1,34 @@
+---
+/** 게임 가이드 목록 (2026-11-04) — 맵 · 오브젝트 · 운영 · 입문처럼 특정 영웅이 아닌 가이드(영웅 칸 0). 영웅 가이드 목록(index.astro)과 같은 화면에 영웅 초상 줄만 없다 (scripts/guides.ts) */
+import BaseLayout from '../../../layouts/BaseLayout.astro';
+import PageHead from '../../../components/PageHead.astro';
+import { LOCALES, localePath, toLocale, useTranslations } from '../../../i18n';
+import { guidesPageConfig } from '../../../lib/guides-page';
+
+export function getStaticPaths() {
+  return LOCALES.map((lang) => ({ params: { lang } }));
+}
+
+const lang = toLocale(Astro.params.lang);
+const t = useTranslations(lang);
+const configJson = await guidesPageConfig(lang, 'game');
+---
+
+<BaseLayout lang={lang} seoTitle={t.seo.guidesGame} title={t.nav.guidesGame} description={t.seo.guidesGameDesc}>
+  <PageHead title={t.nav.guidesGame}>
+    <a
+      href={localePath(lang, 'guides/write') + '?hero=general'}
+      data-guides-write-link
+      class="inline-flex items-center gap-1.5 rounded-md bg-brass-400 px-4 py-2 text-sm font-bold text-ink-950 transition-colors duration-150 hover:bg-brass-200"
+    >
+      <svg aria-hidden="true" viewBox="0 0 16 16" class="size-3.5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M8 3v10M3 8h10"></path></svg>
+      {t.guides.write}
+    </a>
+  </PageHead>
+  <div data-guides-view class="min-h-svh"></div>
+  <script type="application/json" id="guides-config" set:html={configJson} />
+</BaseLayout>
+
+<script>
+  import '../../../scripts/guides.ts';
+</script>

@@ -16,6 +16,8 @@ model: inherit
    - `gh pr view <번호>` 로 제목·본문·연결된 이슈를 읽는다.
    - `gh pr diff <번호>` 로 변경 내용을 본다. 필요하면 주변 파일을 Read 로 열어 맥락을 확인한다.
    - `src/data/patch-archive.json` 변경은 봇이 main 에 올린 보관 커밋이 merge 로 섞인 것일 수 있다 - PR 고유 변경과 구분한다.
+   - `gh pr view <번호> --json mergeable,mergeStateStatus` 로 main 과 충돌하는지 본다. 충돌(CONFLICTING)이면 수정 으로 적는다 -
+     충돌을 풀면 코드가 바뀌므로 푼 뒤 다시 리뷰해야 한다 (CLAUDE.md '다른 세션과 같은 파일을 고칠 때', 2026-11-04).
 2. 요구사항 대조
    - 연결된 이슈(`Closes #N`)의 수용 기준을 모두 충족했는지 확인한다.
    - CLAUDE.md 결정 이력에서 버린 방향을 되살리지 않았는지 본다.

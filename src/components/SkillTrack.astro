@@ -8,6 +8,7 @@
 import type { Ability } from '../data';
 import { useTranslations, type Locale } from '../i18n';
 import { gameImage } from '../lib/images';
+import { tipAttr, type TipSpec } from '../lib/tip';
 
 interface Props {
   lang: Locale;
@@ -28,6 +29,15 @@ const nth = order.map((id) => {
   return n;
 });
 const COST = [0, 1, 2, 5];
+/** 칸 툴팁 — 능력 이름 | 순서 · 단계(해금 · 강화 n), 예상 구간이면 아래에 '예상'. 칸 142개쯤이라 글(title)은 따로 싣지 않는다 (트랙 전체가 role=img) */
+const tipFor = (a: Ability, i: number): TipSpec => ({
+  h: a.name,
+  rows: [
+    [t.heroes.tipOrder, String(i + 1)],
+    [t.heroes.tipStep, nth[i] === 0 ? t.heroes.unlock : `${t.heroes.upgrade} ${nth[i]}`],
+  ],
+  f: i >= predictedFrom ? t.heroes.predicted : undefined,
+});
 ---
 
 <div class="skill-track" style={`--steps:${order.length}`} role="img" aria-label={t.heroes.skillOrderTitle}>
@@ -43,13 +53,13 @@ const COST = [0, 1, 2, 5];
               <span
                 class:list={['st-mark st-unlock', i >= predictedFrom && 'st-pred']}
                 style={`grid-column:${i + 1}`}
-                title={`${i + 1} · ${a.name} ${t.heroes.unlock}${i >= predictedFrom ? ` · ${t.heroes.predicted}` : ''}`}
+                data-tip-rows={tipAttr(tipFor(a, i))}
               />
             ) : (
               <span
                 class:list={['st-mark', i >= predictedFrom && 'st-pred']}
                 style={`grid-column:${i + 1}`}
-                title={`${i + 1} · ${a.name} ${t.heroes.upgrade} ${nth[i]}${i >= predictedFrom ? ` · ${t.heroes.predicted}` : ''}`}
+                data-tip-rows={tipAttr(tipFor(a, i))}
               >
                 {COST[nth[i]]}
               </span>

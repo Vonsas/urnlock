@@ -16,7 +16,7 @@
  *  - 읽기 GET 은 그래도 센다 (헤더는 위조할 수 있어 거를 수 없다) — 막혀도 1분이고 대부분 CDN 에서 끝난다
  * 넘으면 429 + Retry-After, 본문 error 'busy' — 하루 한도에 걸린 'rate' 와 화면 문구를 나눈다.
  */
-import { clientIp, json, sameOrigin } from './http.js';
+import { clientIp, json, proxyBlocked, sameOrigin } from './http.js';
 
 export type LimitKind = 'read' | 'write' | 'auth';
 /** 1분에 IP 하나가 함수 인스턴스 하나에 보낼 수 있는 요청 수 — 보통 사용(가이드 탭 열기 = 요청 3개)은 걸리지 않게 넉넉히 */
@@ -37,6 +37,9 @@ function prune(now: number) {
 
 /** 넘었으면 돌려줄 429 응답(다른 사이트에서 온 쓰기 요청은 세지 않고 403), 아니면 null. 핸들러 맨 앞(저장소보다 먼저)에서 부른다 */
 export function limited(request: Request, kind: LimitKind, now = Date.now()): Response | null {
+  // 프록시 입구 검사(#51) — 직접 접근 거절(REQUIRE_PROXY) · 프록시가 넘긴 IP 가 이상하면 400. 세기 전에
+  const blocked = proxyBlocked(request);
+  if (blocked) return blocked;
   if (request.method !== 'GET' && request.method !== 'HEAD' && !sameOrigin(request)) return json({ ok: false, error: 'auth', problem: { error: 'auth' } }, 403);
   const key = `${kind}:${clientIp(request)}`;
   let e = hits.get(key);

@@ -8,6 +8,7 @@
  */
 import type { Dictionary } from '../i18n';
 import { TIER_TONE } from '../lib/tier-tone';
+import { signTone, tipAttr, tipText, winTone, type TipSpec } from '../lib/tip';
 
 type WindowKey = 'patch' | 'prev' | '7d' | '14d' | '30d';
 type RankKey = 'ranked' | 'normal' | 'upper' | 'lower' | 'low' | 'mid' | 'high' | 'top';
@@ -21,8 +22,8 @@ const SAMPLE_WARN_STRONG = 20_000;
 type Tier = 'S' | 'A' | 'B' | 'C' | 'D';
 type Tag = 'skill' | 'easy';
 
-/** 티어 화면: [heroId, 티어|null, 태그|null, 표본 부족 1|0, 지난주 대비 칸 수(+오름)|null, 근거 한 줄] */
-export type TierCell = [number, Tier | null, Tag | null, 0 | 1, number | null, string];
+/** 티어 화면: [heroId, 티어|null, 태그|null, 표본 부족 1|0, 지난주 대비 칸 수(+오름)|null, 근거(툴팁 표의 줄)|null] */
+export type TierCell = [number, Tier | null, Tag | null, 0 | 1, number | null, Pick<TipSpec, 'rows' | 'f'> | null];
 /**
  * 승률표: [heroId, 판수, 승수, 숙련자 판수, 숙련자 승수, 킬 + 어시스트, 데스] — 비율은 브라우저가 계산한다
  * (KDA 에는 킬과 어시스트의 합만 쓰므로 한 칸으로 — 단계별 원본 파일을 줄이려고)
@@ -73,10 +74,10 @@ if (configEl && view) {
   const sampleNote = document.querySelector<HTMLElement>('[data-tier-sample-note]');
   /**
    * 티어는 최근 2주 · 상위권(전령사+) 이 기본, [전령사 미만] 으로 하위권 (2026-10-08). 패치 2주 미만이면 '현재 패치만' 선택 가능,
-   * 승률표는 현재 패치 · 랭크 전체가 기본 — TierControls.astro 와 같게
+   * 승률표는 최근 7일 · 랭크 전체가 기본 (2026-11-05 — 현재 패치는 작은 패치 뒤 표본이 몇 시간치라) — TierControls.astro 와 같게
    */
   const defaultRank: RankKey = 'upper';
-  const defaultWindow: WindowKey = cfg.mode === 'tier' ? '14d' : 'patch';
+  const defaultWindow: WindowKey = cfg.mode === 'tier' ? '14d' : '7d';
 
   const params = new URLSearchParams(location.search);
   const isWindow = (v: string | null): v is WindowKey => windowButtons.some((b) => b.dataset.tierWindow === v);
@@ -102,7 +103,7 @@ if (configEl && view) {
   const picker = document.querySelector<HTMLElement>('[data-rank-range]');
   /**
    * 숙련 차이 · 변화는 비교하는 쪽 판수가 이보다 적으면 '—' (마우스를 올리면 판수). 막 나온 영웅은 숙련자(평생 80판+) 경기가 1판뿐이라 100% 로 보였다
-   * (2026-10-06 사용자 제보 — 랫 킹 현재 패치 숙련자 1판 1승). 티어 점수의 MIN_EXP_GAMES(tier-score.ts)와 같은 200판.
+   * (2026-10-06 사용자 제보 — 랫 킹 현재 패치 숙련자 1판 1승). 200판.
    */
   const MIN_RATE_GAMES = 200;
 
@@ -115,6 +116,8 @@ if (configEl && view) {
     return node;
   }
   const pct = (n: number) => `${nf.format(n)}%`;
+  /** 수치 툴팁 (표) + 같은 내용의 title */
+  const tipAttrs = (spec: TipSpec) => ({ title: tipText(spec), 'data-tip-rows': tipAttr(spec) });
   const heroLink = (id: number) => `${cfg.heroPath}${cfg.heroes[id]?.slug ?? ''}/`;
   const heroIcon = (id: number, cls: string) => {
     const icon = cfg.heroes[id]?.icon;
@@ -127,7 +130,7 @@ if (configEl && view) {
       'span',
       {
         title: tag === 'skill' ? t.tagSkillHint : t.tagEasyHint,
-        class: `rounded-xs px-1.5 text-[0.625rem] leading-4 font-bold ${tag === 'skill' ? 'bg-spirit/15 text-spirit' : 'bg-vitality/15 text-vitality'}`,
+        class: `rounded-xs px-1 text-[0.625rem] leading-4 font-bold sm:px-1.5 ${tag === 'skill' ? 'bg-spirit/15 text-spirit' : 'bg-vitality/15 text-vitality'}`,
       },
       tag === 'skill' ? t.tagSkill : t.tagEasy,
     );
@@ -141,17 +144,25 @@ if (configEl && view) {
         label,
         el(
           'ul',
-          { class: 'flex min-h-24 flex-wrap gap-2 p-2.5' },
+          // 휴대폰은 한 줄 5명을 칸 폭에 맞춰 꽉 채운다 (2026-11-03 사용자: 4명이면 오른쪽이 비어 어색함) — 넓은 화면은 고정 폭 타일을 줄바꿈
+          { class: 'grid min-h-24 grid-cols-5 gap-1 p-1.5 sm:flex sm:flex-wrap sm:gap-2 sm:p-2.5' },
           ...(list.length
             ? list.map(([id, tier, tag, lowSample, change, reason]) => {
-                // 지난주 대비 — 초상 오른쪽 위 작은 화살표 (변동이 없으면 아무것도 없다). 설명 문장은 마우스를 올렸을 때 근거와 함께
-                const changeText = change
-                  ? (change > 0 ? t.changeUp : t.changeDown).replace('{n}', String(Math.abs(change))).replace('{tier}', TIERS[TIERS.indexOf(tier!) + change] ?? '')
-                  : '';
-                const title = [cfg.heroes[id]?.name, reason, changeText].filter(Boolean).join('\n');
+                // 지난주 대비 — 초상 오른쪽 위 작은 화살표 (변동이 없으면 아무것도 없다). 마우스를 올리면 근거 표 머리에 같은 화살표, 아래에 지난주 티어
+                const prevTier = change ? TIERS[TIERS.indexOf(tier!) + change] : undefined;
+                const changeText = change ? (change > 0 ? t.changeUp : t.changeDown).replace('{n}', String(Math.abs(change))).replace('{tier}', prevTier ?? '') : '';
+                const name = cfg.heroes[id]?.name ?? `#${id}`;
+                const tip: TipSpec | null = reason
+                  ? {
+                      h: name,
+                      hr: change ? [`${change > 0 ? '▲' : '▼'}${Math.abs(change)}`, signTone(change)] : undefined,
+                      rows: reason.rows,
+                      f: [reason.f, prevTier && t.prevTier.replace('{tier}', prevTier)].filter(Boolean).join(' · ') || undefined,
+                    }
+                  : null;
                 return el(
                   'li',
-                  { class: 'relative w-[5.5rem]' },
+                  { class: 'relative min-w-0 sm:w-[5.5rem]' },
                   change
                     ? el(
                         'span',
@@ -164,23 +175,23 @@ if (configEl && view) {
                     : null,
                   el(
                     'a',
-                    { href: heroLink(id), class: 'group block', title },
+                    { href: heroLink(id), class: 'group block', ...(tip ? { ...tipAttrs(tip), 'data-tip-delay': '' } : { title: name }) },
                     heroIcon(id, 'aspect-square w-full rounded-md ring-1 ring-line ring-inset group-hover:ring-brass-400/70'),
-                    el('p', { class: 'mt-1 truncate text-center text-xs font-semibold text-paper-200 group-hover:text-paper-50' }, cfg.heroes[id]?.name ?? `#${id}`),
+                    el('p', { class: 'mt-1 truncate text-center text-[0.6875rem] font-semibold text-paper-200 group-hover:text-paper-50 sm:text-xs' }, cfg.heroes[id]?.name ?? `#${id}`),
                     tag || lowSample
                       ? el(
                           'p',
                           { class: 'mt-1 flex flex-wrap justify-center gap-1' },
                           tag ? tagChip(tag) : null,
                           lowSample
-                            ? el('span', { title: t.lowSampleHint, class: 'rounded-xs bg-ink-700 px-1.5 text-[0.625rem] leading-4 font-bold text-paper-200' }, t.lowSample)
+                            ? el('span', { title: t.lowSampleHint, class: 'rounded-xs bg-ink-700 px-1 text-[0.625rem] sm:px-1.5 leading-4 font-bold text-paper-200' }, t.lowSample)
                             : null,
                         )
                       : null,
                   ),
                 );
               })
-            : [el('li', { class: 'self-center px-2 text-sm text-paper-500' }, empty)]),
+            : [el('li', { class: 'col-span-full self-center px-2 text-sm text-paper-500' }, empty)]),
         ),
       );
     // 티어 안은 빌드에서 점수 순으로 보낸 순서 그대로 (강한 영웅이 앞). 제외(티어 없음)는 이름순
@@ -206,10 +217,10 @@ if (configEl && view) {
    * 변화 = 직전 기간 대비 승률 — 현재 패치 ↔ 이전 패치, 최근 7일 ↔ 8–14일 전, 최근 14일 ↔ 15–30일 전 (긴 기간에서 짧은 기간을 빼서 만든다).
    * 이전 패치 · 최근 30일은 비교할 기간이 없어 열을 숨긴다.
    */
-  const CHANGE_BASE: Partial<Record<WindowKey, { whole: WindowKey; minus?: WindowKey; hint: 'changeHintPatch' | 'changeHint7d' | 'changeHint14d' }>> = {
-    patch: { whole: 'prev', hint: 'changeHintPatch' },
-    '7d': { whole: '14d', minus: '7d', hint: 'changeHint7d' },
-    '14d': { whole: '30d', minus: '14d', hint: 'changeHint14d' },
+  const CHANGE_BASE: Partial<Record<WindowKey, { whole: WindowKey; minus?: WindowKey; tip: 'changeVsPatch' | 'changeVs7d' | 'changeVs14d' }>> = {
+    patch: { whole: 'prev', tip: 'changeVsPatch' },
+    '7d': { whole: '14d', minus: '7d', tip: 'changeVs7d' },
+    '14d': { whole: '30d', minus: '14d', tip: 'changeVs14d' },
   };
   function baseRates(): Map<number, { m: number; w: number }> | null {
     const spec = CHANGE_BASE[win];
@@ -225,6 +236,8 @@ if (configEl && view) {
     return out;
   }
   const nf2 = new Intl.NumberFormat(cfg.locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  /** 휴대폰 승률표의 판수 — '12만' · '120K' 처럼 짧게 (숫자 열 여섯 개가 한 화면에 들어가게) */
+  const nfShort = new Intl.NumberFormat(cfg.locale, { notation: 'compact', maximumFractionDigits: 1 });
   const nfSigned = new Intl.NumberFormat(cfg.locale, { minimumFractionDigits: 1, maximumFractionDigits: 1, signDisplay: 'exceptZero' });
   type Row = { id: number; m: number; wr: number; pick: number; kda: number | null; change: number | null; prevWr: number | null; gap: number | null; expWr: number | null; novWr: number | null; expM: number; novM: number };
 
@@ -256,14 +269,14 @@ if (configEl && view) {
     });
     const signed = (n: number) => `${nfSigned.format(Math.round(n * 10) / 10)}${t.pp}`;
     const dash = (title?: string) => el('span', { class: 'text-paper-500', title }, '—');
-    const cols: Array<{ key: ColKey; label: string; hint?: string; value: (r: Row) => number | null; fmt: (r: Row) => Node | string }> = [
+    const cols: Array<{ key: ColKey; label: string; tip?: string; value: (r: Row) => number | null; fmt: (r: Row) => Node | string }> = [
       { key: 'wr', label: t.winRate, value: (r) => r.wr, fmt: (r) => pct(r.wr) },
       ...(base
         ? [
             {
               key: 'change' as const,
               label: t.change,
-              hint: t[CHANGE_BASE[win]!.hint],
+              tip: t[CHANGE_BASE[win]!.tip],
               value: (r: Row) => r.change,
               fmt: (r: Row) =>
                 r.change === null
@@ -272,31 +285,54 @@ if (configEl && view) {
                       'span',
                       {
                         class: r.change >= 0.05 ? 'text-buff' : r.change <= -0.05 ? 'text-nerf' : '',
-                        title: t.changeCell.replace('{from}', pct(r.prevWr!)).replace('{to}', pct(r.wr)),
+                        ...tipAttrs({
+                          h: t.change,
+                          hr: [signed(r.change), Math.abs(r.change) < 0.05 ? 0 : signTone(r.change)],
+                          rows: [
+                            [t.prevPeriod[win as keyof typeof t.prevPeriod], pct(r.prevWr!), winTone(r.prevWr!)],
+                            [t.windows[win], pct(r.wr), winTone(r.wr)],
+                          ],
+                        }),
                       },
                       signed(r.change),
                     ),
             },
           ]
         : []),
-      { key: 'pick', label: t.pickRate, hint: t.pickHint, value: (r) => r.pick, fmt: (r) => pct(r.pick) },
-      ...(normal ? [] : [{ key: 'kda' as const, label: t.kda, hint: t.kdaHint, value: (r: Row) => r.kda, fmt: (r: Row) => (r.kda === null ? dash() : nf2.format(r.kda)) }]),
+      { key: 'pick', label: t.pickRate, value: (r) => r.pick, fmt: (r) => pct(r.pick) },
+      ...(normal ? [] : [{ key: 'kda' as const, label: t.kda, value: (r: Row) => r.kda, fmt: (r: Row) => (r.kda === null ? dash() : nf2.format(r.kda)) }]),
       // 숙련자 수치가 없으면(일반 — 일반 매치 숙련자 요청이 API 시간 제한에 걸림, 2026-10-29) 열을 숨긴다
       ...(!normal && rows.some((r) => r.expM > 0)
         ? [
             {
               key: 'gap' as const,
               label: t.skillGap,
-              hint: t.skillGapHint,
+              tip: t.skillGapTip,
               value: (r: Row) => r.gap,
               fmt: (r: Row) =>
                 r.gap === null
                   ? dash(t.tooFewGames.replace('{n}', nf0.format(Math.min(r.expM, r.novM))))
-                  : el('span', { title: t.skillGapCell.replace('{exp}', pct(r.expWr!)).replace('{nov}', pct(r.novWr!)) }, signed(r.gap)),
+                  : el(
+                      'span',
+                      tipAttrs({
+                        h: t.skillGap,
+                        hr: [signed(r.gap)],
+                        rows: [
+                          [t.tipExp, pct(r.expWr!), winTone(r.expWr!)],
+                          [t.tipNov, pct(r.novWr!), winTone(r.novWr!)],
+                        ],
+                      }),
+                      signed(r.gap),
+                    ),
             },
           ]
         : []),
-      { key: 'matches', label: t.matches, value: (r) => r.m, fmt: (r) => nf0.format(r.m) },
+      {
+        key: 'matches',
+        label: t.matches,
+        value: (r) => r.m,
+        fmt: (r) => el('span', {}, el('span', { class: 'max-sm:hidden' }, nf0.format(r.m)), el('span', { class: 'sm:hidden' }, nfShort.format(r.m))),
+      },
     ];
     // 고른 열이 없어졌으면(변화 열이 없는 기간) 승률로
     const active = cols.find((c) => c.key === sort.col) ?? cols[0];
@@ -308,28 +344,30 @@ if (configEl && view) {
       if (y === null) return -1;
       return sort.desc ? y - x : x - y;
     });
-    // 일반(열 3개)은 휴대폰에서 한 화면에 들어가게 — 숫자 열 폭을 고정하지 않고, 여백 · 영웅 아이콘을 줄이고, 머리글('Win rate')과 긴 이름은 두 줄로
-    const numPad = normal ? 'px-2 sm:px-4' : 'px-3 sm:px-4';
+    // 휴대폰에선 옆으로 밀지 않고 한 화면에 (2026-11-03 사용자: 한눈에 보이게) — 숫자 열 폭을 고정하지 않고, 여백 · 글씨 · 영웅 아이콘을 줄이고,
+    // 머리글('숙련 차이')은 두 줄로. 랭크(숫자 열 여섯)는 영웅 이름을 숨기고 초상만, 일반(셋)은 이름도 (긴 이름은 두 줄)
+    const numPad = normal ? 'px-2 sm:px-4' : 'px-1 sm:px-4';
+    const heroPad = normal ? 'px-2 sm:px-4' : 'pr-1 pl-2 sm:px-4';
     const head = el(
       'tr',
       { class: 'border-b border-line' },
       // 영웅 열은 왼쪽에 붙여 둔다 — 휴대폰에서 표를 옆으로 밀어도 어느 영웅 줄인지 보이게 (2026-10-05 모바일 점검)
-      el('th', { class: `sticky left-0 z-[1] bg-ink-900 ${numPad} py-3 text-left font-semibold` }, t.hero),
-      // 숫자 열은 모두 같은 폭, 머리글 글자 끝을 숫자 끝에 맞춘다 — 정렬 화살표·ⓘ 는 글자 왼쪽 고정 칸에 (2026-10-03 '표가 흐트러져 보인다')
+      el('th', { class: `sticky left-0 z-[1] bg-ink-900 ${heroPad} py-3 text-left align-top font-semibold` }, t.hero),
+      // 숫자 열은 모두 같은 폭, 머리글 글자 끝을 숫자 끝에 맞춘다 — 정렬 화살표는 글자 왼쪽 고정 칸에 (2026-10-03 '표가 흐트러져 보인다').
+      // 설명이 필요한 열(변화 · 숙련 차이)만 머리글에 마우스를 올리면 툴팁 (2026-11-04 사용자: 픽률 · KDA 는 설명 없이도 안다, 머리 아래 줄은 싫다)
       ...cols.map((c) => {
         const on = active.key === c.key;
         const btn = el(
           'button',
-          { type: 'button', title: c.hint, class: `inline-flex items-center justify-end gap-1 ${normal ? 'sm:whitespace-nowrap' : 'whitespace-nowrap'} hover:text-paper-50 ${on ? 'text-paper-50' : ''}` },
-          el('span', { class: 'w-2.5 text-center', 'aria-hidden': 'true' }, on ? (sort.desc ? '↓' : '↑') : ''),
-          c.hint ? el('span', { class: 'text-paper-500', 'aria-hidden': 'true' }, 'ⓘ') : null,
+          { type: 'button', title: c.tip, class: `inline-flex items-start justify-end align-top gap-0.5 sm:gap-1 sm:whitespace-nowrap hover:text-paper-50 ${on ? 'text-paper-50' : ''}` },
+          el('span', { class: `text-center sm:w-2.5 ${on ? '' : 'max-sm:hidden'}`, 'aria-hidden': 'true' }, on ? (sort.desc ? '↓' : '↑') : ''),
           c.label,
         );
         btn.addEventListener('click', () => {
           sort = { col: c.key, desc: active.key === c.key ? !sort.desc : true };
           render();
         });
-        return el('th', { class: `${numPad} py-3 text-right font-semibold ${normal ? 'sm:w-[7.5rem]' : 'w-24 sm:w-[7.5rem]'}`, 'aria-sort': on ? (sort.desc ? 'descending' : 'ascending') : undefined }, btn);
+        return el('th', { class: `${numPad} py-3 text-right align-top font-semibold sm:w-[7.5rem]`, 'aria-sort': on ? (sort.desc ? 'descending' : 'ascending') : undefined }, btn);
       }),
     );
     const body = sorted.map((r) => {
@@ -340,24 +378,25 @@ if (configEl && view) {
         el(
           'th',
           // 일반은 긴 이름('레이디 가이스트')을 두 줄로 — 그래야 휴대폰 폭에 숫자 열 셋이 다 들어간다
-          { scope: 'row', class: `sticky left-0 z-[1] bg-ink-900 ${numPad} py-2 text-left font-semibold group-hover:bg-ink-850 ${normal ? '' : 'whitespace-nowrap'}` },
+          { scope: 'row', class: `sticky left-0 z-[1] bg-ink-900 ${heroPad} py-1.5 text-left font-semibold group-hover:bg-ink-850 sm:py-2 ${normal ? '' : 'whitespace-nowrap'}` },
           el(
             'a',
-            { href: heroLink(r.id), class: `flex items-center hover:text-brass-200 ${normal ? 'gap-2 sm:gap-2.5' : 'gap-2.5'}` },
-            heroIcon(r.id, `${normal ? 'size-7 sm:size-8' : 'size-8'} flex-none rounded-sm`),
-            cfg.heroes[r.id]?.name ?? `#${r.id}`,
-            low ? el('span', { class: 'text-2xs font-semibold text-copper-400' }, t.lowSampleShort) : null,
+            { href: heroLink(r.id), title: normal ? undefined : low ? `${cfg.heroes[r.id]?.name} · ${t.lowSampleShort}` : cfg.heroes[r.id]?.name, class: 'flex items-center gap-2 hover:text-brass-200 sm:gap-2.5' },
+            // 휴대폰 랭크 표는 이름 · '표본 적음' 글자가 화면에 없으므로 표본 적은 영웅은 초상에 구리색 테두리 (글자는 스크린 리더용으로 남김)
+            heroIcon(r.id, `size-7 flex-none rounded-sm sm:size-8 ${low && !normal ? 'max-sm:ring-2 max-sm:ring-copper-400' : ''}`),
+            el('span', { class: normal ? '' : 'max-sm:sr-only' }, cfg.heroes[r.id]?.name ?? `#${r.id}`),
+            low ? el('span', { class: `text-2xs font-semibold text-copper-400 ${normal ? '' : 'max-sm:sr-only'}` }, t.lowSampleShort) : null,
           ),
         ),
-        // 지금 정렬한 열을 굵게 (예전엔 '승률' 열만 늘 굵어서 정렬 기준이 안 보였다)
-        ...cols.map((col) => el('td', { class: `${numPad} py-2 text-right tabular-nums ${col.key === active.key ? 'font-bold text-paper-50' : 'text-paper-200'}` }, col.fmt(r))),
+        // 지금 정렬한 열을 굵게 (예전엔 '승률' 열만 늘 굵어서 정렬 기준이 안 보였다). 숫자는 줄바꿈 없이 — 머리 설명 줄이 열을 넓히면 휴대폰에서 '14.1万' 이 두 줄로 꺾였다
+        ...cols.map((col) => el('td', { class: `${numPad} py-1.5 text-right whitespace-nowrap tabular-nums sm:py-2 ${col.key === active.key ? 'font-bold text-paper-50' : 'text-paper-200'}` }, col.fmt(r))),
       );
     });
     return el(
       'div',
       { class: 'panel overflow-x-auto' },
-      // 일반(열 3개)은 휴대폰 폭 안에 들어가게 최소 폭을 두지 않는다
-      el('table', { class: `w-full text-sm ${normal ? '' : 'min-w-[40rem] sm:min-w-[46rem]'}` }, el('thead', { class: 'text-xs text-paper-500' }, head), el('tbody', {}, ...body)),
+      // 휴대폰에선 최소 폭을 두지 않는다 (한 화면에)
+      el('table', { class: `w-full text-xs sm:text-sm ${normal ? '' : 'sm:min-w-[46rem]'}` }, el('thead', { class: 'text-2xs text-paper-500 sm:text-xs' }, head), el('tbody', {}, ...body)),
     );
   }
 
@@ -486,18 +525,31 @@ if (configEl && view) {
     const board = cfg.mode === 'stats' ? boardFor(win) : cfg.boards.find((b) => b.window === win && b.rank === rank);
     const w = cfg.windows.find((x) => x.key === win);
     if (basis) {
-      basis.textContent = board && w
-        ? `${t.basis
-            .replace('{from}', dateFmt.format(new Date(w.from * 1000)))
-            .replace('{to}', dateFmt.format(new Date((w.to ?? cfg.generatedAt) * 1000)))
-            .replace('{n}', nf0.format(board.totalMatches))} · ${t.updated.replace('{when}', stampFmt.format(new Date(cfg.generatedAt * 1000)))}`
-        : '';
+      // 기간 · 판수 / 데이터 시각을 따로 묶어, 칸이 좁으면 그 사이에서 줄이 바뀐다 (TierControls 의 BASIS_CLASS)
+      // ' · ' 는 앞쪽에 붙여(줄바꿈 없는 공백) 접힐 때 둘째 줄이 점으로 시작하지 않게
+      const nowrap = (text: string) => el('span', { class: 'whitespace-nowrap' }, text);
+      basis.replaceChildren(
+        ...(board && w
+          ? [
+              nowrap(
+                `${t.basis
+                  .replace('{from}', dateFmt.format(new Date(w.from * 1000)))
+                  .replace('{to}', dateFmt.format(new Date((w.to ?? cfg.generatedAt) * 1000)))
+                  .replace('{n}', nf0.format(board.totalMatches))}\u00a0·`,
+              ),
+              ' ',
+              nowrap(t.updated.replace('{when}', stampFmt.format(new Date(cfg.generatedAt * 1000)))),
+            ]
+          : []),
+      );
     }
     if (sampleNote) {
       const n = board?.totalMatches ?? 0;
       sampleNote.hidden = !board || n >= SAMPLE_WARN;
       sampleNote.textContent = n < SAMPLE_WARN_STRONG ? t.sampleWarnStrong : t.sampleWarn;
     }
+    // 페이지가 잡아 둔 한 화면 높이(화면 밀림 방지)는 첫 그리기와 같은 프레임에 푼다 — 남겨 두면 큰 화면에서 보드 아래가 빈다
+    out.classList.remove('min-h-svh');
     if (!board) {
       if (stepsOutdated) {
         const again = el('button', { type: 'button', class: 'mt-3 rounded-md bg-brass-400 px-4 py-1.5 text-sm font-bold text-ink-950 hover:bg-brass-200' }, t.reload);

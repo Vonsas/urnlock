@@ -102,10 +102,11 @@ const statColumns = { base: t.heroes.baseCol, perBoon: t.heroes.perBoon, max: t.
 
 <BaseLayout lang={lang} title={hero.name} seoTitle={fill(t.seo.hero, { hero: hero.name })} description={fill(t.seo.heroDesc, { hero: hero.name })}>
   <!--
-    영웅 머리 — 한 패널 안에 [초상 | 이름 로고 · 능력 아이콘 · 소개] ‖ 이 영웅의 최근 패치 변경 (육각형은 지표 탭으로).
+    영웅 머리 — 큰 면(.hero-sheet) 맨 위에 [초상 | 이름 로고 · 능력 아이콘] ‖ 이 영웅의 최근 패치 변경 (육각형은 지표 탭으로).
     왼쪽 묶음과 육각형 높이를 비슷하게(약 14rem) 맞추고, 넓은 화면에선 세로 괘선으로 나눈다 (2026-10-02 사용자 요청: 균형, 경로 표시 없음)
   -->
-  <header class="mt-6 grid gap-6 rounded-lg bg-ink-900 p-4 ring-1 ring-line ring-inset sm:p-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-stretch lg:gap-8">
+  <div class="hero-sheet mt-6">
+  <header class="grid gap-6 p-4 sm:p-6 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-stretch lg:gap-8">
     <div class="min-w-0">
       <div class="flex items-center gap-4 sm:gap-6">
         <HeroPortrait slug={hero.slug} name={hero.name} image={hero.image} size="lg" class="aspect-[280/380] w-24 flex-none rounded-lg ring-1 ring-line ring-inset sm:w-36 lg:w-44" />
@@ -137,10 +138,10 @@ const statColumns = { base: t.heroes.baseCol, perBoon: t.heroes.perBoon, max: t.
 
   {
     d && groups ? (
-      <div data-tabs class="mt-6">
+      <div data-tabs>
         <!-- 탭: 지표 / 빌드 / 기본 스탯 을 하나씩 보여준다. JS 가 없으면 둘 다 보이고 탭은 앵커로 동작 -->
-        {/* 고정 탭 줄 — 화면 전체 배경(밤 도시) 위에서 띠처럼 보이지 않게 다른 박스와 같은 면으로 (2026-10-04) */}
-        <nav aria-label={t.heroes.overview} class="sticky top-0 z-20 -mx-4 border-b border-line bg-ink-900 px-4 sm:mx-0 sm:rounded-t-lg sm:px-5">
+        {/* 고정 탭 줄 — 머리 · 내용과 같은 면 */}
+        <nav aria-label={t.heroes.overview} class="sticky top-0 z-20 border-y border-line bg-ink-900 px-4 sm:px-5">
           <div role="tablist" class="flex gap-7 text-base font-semibold">
             {tabs.map((tab, i) => (
               <a
@@ -158,25 +159,41 @@ const statColumns = { base: t.heroes.baseCol, perBoon: t.heroes.perBoon, max: t.
           </div>
         </nav>
 
-        <section id="stats" role="tabpanel" aria-labelledby="tab-stats" data-tab-panel class="mt-6 scroll-mt-16">
-          <div class="grid items-start gap-4 lg:grid-cols-2">
+        {/*
+          그려지기 전에 열 탭만 남긴다 — 탭 줄 바로 뒤라 패널을 읽기 전에 돈다. 예전엔 패널들 뒤에 있어서, 느린 기기에선
+          첫 패널(기본 스탯)이 먼저 그려졌다가 사라지며 지표 탭이 위로 올라왔다 (화면 밀림 0.26). 아래 탭 스크립트가 data-hidden 을 붙인 뒤 이 style 을 지운다.
+          JS 가 없으면 모든 탭이 보인다.
+        */}
+        <script is:inline define:vars={{ firstTab }}>
+          (function () {
+            var hash = location.hash.slice(1);
+            var open = document.getElementById('tab-' + hash) ? hash : firstTab;
+            var style = document.createElement('style');
+            style.id = 'tab-first';
+            style.textContent = '[data-tab-panel]:not(#' + CSS.escape(open) + '){display:none!important}';
+            document.head.appendChild(style);
+          })();
+        </script>
+
+        <section id="stats" role="tabpanel" aria-labelledby="tab-stats" data-tab-panel class="scroll-mt-16">
+          <div class="sheet-split">
             <StatGroup title={t.items.categories.weapon} subtitle={weaponName} category="weapon" lines={groups.weapon} columns={statColumns} />
-            <div class="grid gap-4">
+            <div class="sheet-stack">
               <StatGroup title={t.items.categories.vitality} category="vitality" lines={groups.vitality} columns={statColumns} />
               <StatGroup title={t.items.categories.spirit} category="spirit" lines={groups.spirit} columns={statColumns} />
             </div>
           </div>
-          {boons > 0 && <p class="mt-3 text-xs text-paper-400">{fill(t.heroes.maxNote, { n: boons })} {t.heroes.statRankNote}</p>}
+          {boons > 0 && <p class="border-t border-line px-4 py-3 text-xs text-paper-400 sm:px-5">{fill(t.heroes.maxNote, { n: boons })} {t.heroes.statRankNote}</p>}
         </section>
 
         {(profile || insights || charts) && (
-          <section id="metrics" role="tabpanel" aria-labelledby="tab-metrics" data-tab-panel class="mt-6 scroll-mt-16">
-            <HeroMetrics lang={lang} heroName={hero.name} profile={profile} insights={insights} charts={charts} ranks={ranks} patches={patchMarks} />
+          <section id="metrics" role="tabpanel" aria-labelledby="tab-metrics" data-tab-panel class="scroll-mt-16">
+            <HeroMetrics lang={lang} heroName={hero.name} abilities={d.abilities} profile={profile} insights={insights} charts={charts} ranks={ranks} patches={patchMarks} />
           </section>
         )}
 
         {hasBuild && (
-          <section id="build" role="tabpanel" aria-labelledby="tab-build" data-tab-panel class="mt-6 grid scroll-mt-16 grid-cols-[minmax(0,1fr)] gap-4">
+          <section id="build" role="tabpanel" aria-labelledby="tab-build" data-tab-panel class="scroll-mt-16">
             <BuildTab
               lang={lang}
               items={items}
@@ -191,23 +208,13 @@ const statColumns = { base: t.heroes.baseCol, perBoon: t.heroes.perBoon, max: t.
           </section>
         )}
         {TIPS_ENABLED && hero.id !== undefined && (
-          <section id="guide" role="tabpanel" aria-labelledby="tab-guide" data-tab-panel class="mt-6 scroll-mt-16">
+          <section id="guide" role="tabpanel" aria-labelledby="tab-guide" data-tab-panel class="scroll-mt-16">
             <GuideTab lang={lang} heroId={hero.id} heroName={hero.name} heroSlug={hero.slug} ranks={ranks} />
           </section>
         )}
-        {/* 그려지기 전에 첫 탭만 남긴다 (깜빡임 방지). JS 가 없으면 두 탭 모두 보인다 */}
-        <script is:inline define:vars={{ firstTab }}>
-          (function () {
-            var hash = location.hash.slice(1);
-            var open = document.getElementById('tab-' + hash) ? hash : firstTab;
-            document.querySelectorAll('[data-tab-panel]').forEach(function (p) {
-              if (p.id !== open) p.setAttribute('data-hidden', '');
-            });
-          })();
-        </script>
       </div>
     ) : (
-      <Panel id="pending" title={t.heroes.abilities} class="mt-6" bodyClass="px-4 pt-2 pb-6">
+      <Panel id="pending" title={t.heroes.abilities} class="border-t! border-line!" bodyClass="px-4 pt-2 pb-6">
         <p class="text-sm font-semibold text-copper-400">{t.heroes.detailPending}</p>
         <p class="mt-2 max-w-xl text-paper-200">{t.heroes.detailPendingBody}</p>
         <ol class="mt-5 grid max-w-xl grid-cols-4 gap-2" aria-hidden="true">
@@ -220,6 +227,7 @@ const statColumns = { base: t.heroes.baseCol, perBoon: t.heroes.perBoon, max: t.
       </Panel>
     )
   }
+  </div>
 </BaseLayout>
 
 <script>
@@ -253,5 +261,6 @@ const statColumns = { base: t.heroes.baseCol, perBoon: t.heroes.perBoon, max: t.
     });
     const initial = location.hash.slice(1);
     select(tabs.some((t) => t.dataset.tab === initial) ? initial : tabs[0].dataset.tab!);
+    document.getElementById('tab-first')?.remove();
   }
 </script>

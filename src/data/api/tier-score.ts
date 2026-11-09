@@ -5,7 +5,7 @@
  *   이 파일은 같은 입력 · 출력 모양을 지키는 자리표시 공식이다:
  *   점수 = 판수만큼 평균 쪽으로 당긴 전체 승률의 표준점수 → 표준점수 구간으로 S–D.
  *
- * - 전체 판수가 MIN_GAMES 미만이면 티어를 매기지 않는다 ('제외'). 숙련자 판수가 적으면 티어는 매기되 '표본 부족' 표시.
+ * - 전체 판수가 MIN_GAMES 미만이면 티어를 매기지 않는다 ('제외'). LOW_SAMPLE_GAMES 미만은 티어를 매기되 '표본 부족' 표시.
  * - 태그(숙련 권장 · 입문 추천)는 숙련자 − 비숙련 승률 차이를 그 데이터의 평균 차이와 비교한다.
  */
 import type { TierHero, TierLetter, TierTag } from '../types';
@@ -13,9 +13,10 @@ import type { TierDataset } from './tiers';
 
 const PRIOR_GAMES = 500;
 export const MIN_GAMES = 500;
-export const MIN_EXP_GAMES = 200;
-/** 티어는 매기되 '표본 부족' 을 붙이는 숙련자 판수 */
-export const LOW_SAMPLE_EXP_GAMES = 3000;
+/** 근거 툴팁에 숙련자 승률을 보여 주는 숙련자 판수 */
+export const EXP_MIN_GAMES = 3000;
+/** 티어는 매기되 '표본 부족' 을 붙이는 판수 */
+export const LOW_SAMPLE_GAMES = 3000;
 const CUTS: Array<[TierLetter, number]> = [['S', 1.2], ['A', 0.4], ['B', -0.4], ['C', -1.2], ['D', -Infinity]];
 
 /** '숙련 권장' = 숙련자 − 비숙련 ≥ 그 데이터의 평균 차이 + 이 값 (%p) */
@@ -104,7 +105,7 @@ export function scoreDataset(ds: TierDataset): TierHero[] {
       deaths: h.deaths,
       assists: h.assists,
       tier,
-      lowSample: tier !== null && (h.expMatches >= MIN_EXP_GAMES ? h.expMatches : h.matches) < LOW_SAMPLE_EXP_GAMES,
+      lowSample: tier !== null && h.matches < LOW_SAMPLE_GAMES,
       score: scores.get(h.heroId) ?? null,
       tag,
     };

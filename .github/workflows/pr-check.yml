@@ -1,6 +1,9 @@
-# PR 검사 (2026-10-29) — 머지 전에 잡아야 하는, 빌드보다 가벼운 검사.
+# PR 검사 (2026-10-29) — 머지 전에 잡아야 하는, 빌드보다 가벼운 검사. Actions 시간은 job 마다 분 단위로 올림이라 job 하나에 모은다.
 # Vercel 함수 개수: 무료(Hobby) 요금제는 한 배포에 12개까지 — 넘으면 main · 미리보기 배포가 모두 실패한다 (#31 때 겪음, tools/check-functions.mjs).
-# 의존성 설치 없이 node 만으로 돌아 1분 안에 끝난다.
+# 타입 검사 (2026-11-04): pull_request 는 PR 을 그때의 main 에 합친 상태(refs/pull/N/merge)로 돌아서, 다른 세션의 PR 이 먼저 머지돼
+#   쓰던 이름 · 키가 사라진 '충돌 없이 깨지는 머지' 를 잡는다 (#105 에서 지운 `here` 를 #104 가 새로 쓰기 시작한 일 — CLAUDE.md '다른 세션과 같은 파일을 고칠 때').
+#   문서 · 에이전트 설정 · Worker 만 바뀐 PR 은 건너뛴다 (tools/ignore-build.sh 와 같은 묶음에서 .github/ 만 뺌 — 워크플로를 고친 PR 은 검사가 돌아야 해서).
+#   설치 캐시는 쓰지 않는다 — 캐시 없이도 설치 3.5초인데 저장에 PR 마다 137MB · 5초가 든다 (#110 리뷰).
 name: pr-check
 
 on:
@@ -9,14 +12,35 @@ on:
 permissions:
   contents: read
 
+# 같은 PR 에 새로 push 하면 앞의 검사는 멈춘다
+concurrency:
+  group: pr-check-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
 jobs:
-  functions:
+  checks:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    timeout-minutes: 10
     steps:
       - uses: actions/checkout@v4
+        with:
+          # HEAD = main 에 합친 커밋, HEAD^1 = 그때의 main — 둘을 비교해 PR 이 바꾼 파일을 본다
+          fetch-depth: 2
       - uses: actions/setup-node@v4
         with:
           node-version: 22
       - name: Vercel 함수 12개 이하
         run: node tools/check-functions.mjs
+      - name: 코드가 바뀌었나
+        id: changed
+        run: |
+          code="$(git diff --name-only --no-renames HEAD^1 HEAD | grep -vE '^(docs/|\.claude/|workers/)|\.md$' || true)"
+          echo "code=$([ -n "$code" ] && echo yes || echo no)" >> "$GITHUB_OUTPUT"
+      # 버전은 package.json 의 packageManager (pnpm@12.6.0)
+      - if: steps.changed.outputs.code == 'yes'
+        uses: pnpm/action-setup@v4
+      - if: steps.changed.outputs.code == 'yes'
+        run: pnpm install --frozen-lockfile
+      - name: 타입 검사 (astro check)
+        if: steps.changed.outputs.code == 'yes'
+        run: pnpm check

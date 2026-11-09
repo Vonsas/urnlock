@@ -1,0 +1,35 @@
+---
+/**
+ * 헤더의 색 테마 단추 (2026-11-04 사용자: 푸터에만 있으면 모르는 사람이 있다 — PC 만, 휴대폰은 푸터).
+ * 단추 칸은 지금 테마의 바탕 / 강조색, 누르면 테마 줄이 펼쳐진다 (popover — 바깥을 누르거나 Esc 로 닫힘). 바꾸기는 scripts/theme.ts
+ */
+import { useTranslations, type Locale } from '../i18n';
+import { THEMES } from '../lib/themes';
+
+interface Props {
+  lang: Locale;
+}
+const { lang } = Astro.props;
+const t = useTranslations(lang);
+---
+
+<button
+  type="button"
+  popovertarget="theme-menu"
+  data-theme-trigger
+  aria-label={t.footer.theme}
+  title={t.footer.theme}
+  class="flex size-7 items-center justify-center rounded-sm hover:bg-ink-800 max-sm:hidden"
+>
+  <span class="theme-swatch theme-current size-4 rounded-xs ring-1 ring-line-strong" aria-hidden="true"></span>
+</button>
+<div id="theme-menu" popover data-theme-menu role="group" aria-label={t.footer.theme} class="nav-pop">
+  {
+    THEMES.map((th) => (
+      <button type="button" data-theme-pick={th} aria-pressed="false">
+        <span class="theme-swatch size-4 flex-none rounded-xs ring-1 ring-line-strong" data-swatch={th} aria-hidden="true" />
+        {t.footer.themes[th]}
+      </button>
+    ))
+  }
+</div>

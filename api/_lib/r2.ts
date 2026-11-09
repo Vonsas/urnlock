@@ -4,7 +4,13 @@
  *   R2_ACCOUNT_ID · R2_ACCESS_KEY_ID · R2_SECRET_ACCESS_KEY   R2 → API 토큰 (그 버킷만 Object Read & Write)
  *   R2_BUCKET                                                 버킷 이름
  *   R2_PUBLIC_URL                                             버킷에 붙인 공개 도메인 (예 https://img.urnlock.com, 끝 / 없이)
- * 다섯 개가 다 있어야 R2 를 쓴다 — 하나라도 없으면 images.ts 가 예전처럼 Vercel Blob 에 올린다.
+ * 다섯 개가 다 있어야 R2 를 쓴다 — 하나라도 없으면 사진 올리기는 503 off (2026-11-01 Blob 대신 쓰던 길을 뺐다).
+ *
+ * 지운 사진이 Cloudflare 캐시에 남지 않게 (2026-11-01, #54 점검에서 발견 — 원본은 지워져도 1년 캐시로 주소가 계속 열렸다):
+ *   ① 올릴 때 캐시를 하루로 (`IMAGE_CACHE`) — 비우기가 실패해도 하루 안에 사라진다
+ *   ② 지운 뒤 Cloudflare 캐시 비우기 (`purgeUrls`) — 환경 변수 두 개가 있을 때만:
+ *   CF_ZONE_ID       urnlock.com 존 ID (대시보드 존 개요 오른쪽 아래 32자)
+ *   CF_PURGE_TOKEN   API 토큰 — 권한 Zone · Cache Purge · Purge 하나, 그 존만
  */
 
 const env = () => ({
@@ -19,10 +25,10 @@ let warned = false;
 export const r2Configured = () => {
   const e = env();
   const ok = /^[0-9a-f]{32}$/i.test(e.account) && !!e.keyId && !!e.secret && /^[a-z0-9][a-z0-9-]{1,61}[a-z0-9]$/.test(e.bucket) && /^https:\/\/[a-z0-9.-]+$/i.test(e.publicUrl);
-  // 일부만 넣었거나 꼴이 틀리면 조용히 Blob 으로 가지 않게 로그에 남긴다 (값은 찍지 않음)
+  // 일부만 넣었거나 꼴이 틀리면 왜 사진이 꺼졌는지 로그에 남긴다 (값은 찍지 않음)
   if (!ok && !warned && Object.keys(process.env).some((k) => k.startsWith('R2_'))) {
     warned = true;
-    console.warn('[dldb:r2] R2 환경 변수가 빠졌거나 꼴이 틀려 Vercel Blob 에 올린다 (R2_ACCOUNT_ID 32자 · R2_BUCKET · R2_PUBLIC_URL=https://호스트)');
+    console.warn('[dldb:r2] R2 환경 변수가 빠졌거나 꼴이 틀려 사진 올리기를 끈다 (R2_ACCOUNT_ID 32자 · R2_BUCKET · R2_PUBLIC_URL=https://호스트)');
   }
   return ok;
 };
@@ -72,11 +78,44 @@ async function r2Fetch(method: 'PUT' | 'DELETE', key: string, body?: Uint8Array<
   if (!res.ok) throw new Error(`r2 ${method} ${res.status}`);
 }
 
+/** 사진 캐시 — 이름이 새 UUID 라 바뀔 일은 없지만, 운영자가 지운 사진이 엣지 · 브라우저에 오래 남지 않게 하루만 (예전 1년 immutable) */
+export const IMAGE_CACHE = 'public, max-age=86400';
+
 /** 사진 올리기 → 공개 주소. 이름은 새 UUID (계정 ID 를 넣지 않는다 — 익명 글쓴이가 드러나지 않게) */
 export async function r2Put(key: string, bytes: Uint8Array<ArrayBuffer>) {
-  await r2Fetch('PUT', key, bytes, { 'content-type': 'image/webp', 'cache-control': 'public, max-age=31536000, immutable' });
+  await r2Fetch('PUT', key, bytes, { 'content-type': 'image/webp', 'cache-control': IMAGE_CACHE });
   return `${r2Prefix()}${key}`;
 }
 
 /** 사진 지우기 (없는 이름도 성공으로 온다) */
 export const r2Delete = (key: string) => r2Fetch('DELETE', key);
+
+const purgeEnv = () => ({ zone: process.env.CF_ZONE_ID ?? '', token: process.env.CF_PURGE_TOKEN ?? '' });
+/** 토큰은 인쇄 가능한 ASCII 만 — 줄바꿈 등이 섞이면 fetch 가 머리글 오류 메시지에 토큰을 그대로 넣어 던져 로그에 남는다 (#70 1차 리뷰) */
+export const purgeConfigured = () => {
+  const e = purgeEnv();
+  return /^[0-9a-f]{32}$/i.test(e.zone) && /^[\x21-\x7e]{20,200}$/.test(e.token);
+};
+/** 무료 요금제의 파일 비우기는 요청 하나에 주소 30개까지 */
+const PURGE_BATCH = 30;
+
+/**
+ * Cloudflare 캐시에서 주소 지우기 — 원본을 지운 **뒤에** 부른다 (먼저 비우면 그 사이 요청이 원본을 다시 캐시한다).
+ * R2 공개 주소 + 우리 사진 이름 꼴만 보낸다. 실패는 던진다 — 부르는 쪽이 로그만 남기고 글 처리는 계속한다.
+ */
+export async function purgeUrls(urls: string[]) {
+  const prefix = r2Prefix();
+  const files = urls.filter((u) => u.startsWith(prefix) && R2_KEY.test(u.slice(prefix.length)));
+  if (!files.length) return;
+  const e = purgeEnv();
+  for (let i = 0; i < files.length; i += PURGE_BATCH) {
+    const res = await fetch(`https://api.cloudflare.com/client/v4/zones/${e.zone}/purge_cache`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${e.token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ files: files.slice(i, i + PURGE_BATCH) }),
+      signal: AbortSignal.timeout(5_000),
+    });
+    const body = (await res.json().catch(() => null)) as { success?: boolean } | null;
+    if (!res.ok || !body?.success) throw new Error(`purge ${res.status}`);
+  }
+}

@@ -1,0 +1,96 @@
+---
+/**
+ * 패치노트의 영웅 · 아이템 묶음 하나 — 그림 + 이름(상세로 링크) 아래에 변경 줄.
+ * 영웅은 기본 스탯 · 무기 줄을 위에, 능력 줄은 능력별로 아이콘 옆에 모으고 능력 이름을 한 번만 쓴다 (2026-11-06 사용자 — 줄마다 '반격 - …' 이 반복됐다).
+ * 아이콘은 큰 칸(44px)으로 줄 묶음 위쪽에 고정 (가운데 맞춤은 줄이 많을 때 어색했다 — 사용자).
+ */
+import HeroPortrait from './HeroPortrait.astro';
+import ItemIcon from './ItemIcon.astro';
+import PatchText from './PatchText.astro';
+import type { HeroSummary, Item, PatchBlock, PatchLine } from '../data';
+import { localePath, type Locale } from '../i18n';
+import { withoutAbilityName } from '../lib/patch-lines';
+
+interface Props {
+  lang: Locale;
+  block: Extract<PatchBlock, { type: 'group' }>;
+  hero?: HeroSummary;
+  item?: Item;
+  /** 능력 아이콘 원본 주소 → 사이트 이미지 */
+  abilityIcons: Map<string, string | undefined>;
+  class?: string;
+}
+const { lang, block: b, hero, item, abilityIcons, class: className } = Astro.props;
+const plain = b.lines.filter((l) => !l.ability);
+const abilities = [...(b.abilities ?? [])].sort((x, y) => x.slot - y.slot);
+/** 이 능력의 줄 — 제목으로 쓴 이름은 번역 · 원문 모두에서 뺀다 */
+const abilityLines = (a: (typeof abilities)[number]): PatchLine[] => {
+  const names = [a.name, a.enName];
+  return b.lines
+    .filter((l) => l.ability === a.slot)
+    .map((l) => ({ ...l, text: withoutAbilityName(l.text, names), orig: l.orig && withoutAbilityName(l.orig, names) }));
+};
+---
+
+<div class:list={['px-4 py-3', className]}>
+  <div class="flex items-center gap-2.5">
+    {b.kind === 'hero' && hero && <HeroPortrait slug={hero.slug} name={b.name} image={hero.image} size="sm" class="size-8 flex-none" />}
+    {b.kind === 'item' && item && <ItemIcon slug={item.slug} category={item.category} image={item.image} />}
+    {
+      b.slug ? (
+        <a href={b.kind === 'hero' ? localePath(lang, `heroes/${b.slug}`) : `${localePath(lang, 'items')}#${b.slug}`} class="min-w-0 font-semibold text-paper-50 hover:text-brass-200">
+          {b.name}
+        </a>
+      ) : (
+        <span class="font-semibold text-paper-200">{b.name}</span>
+      )
+    }
+  </div>
+  <div class="mt-2 grid gap-3 text-paper-200">
+    {
+      plain.length > 0 && (
+        <ul class="grid gap-1">
+          {plain.map((line) => (
+            <li class="flex gap-2.5">
+              <span aria-hidden="true" class="mt-[0.55em] size-1 flex-none bg-paper-500" />
+              <span><PatchText line={line} /></span>
+            </li>
+          ))}
+        </ul>
+      )
+    }
+    {
+      abilities.map((a) => (
+        <div class="grid grid-cols-[2.75rem_minmax(0,1fr)] items-start gap-x-3">
+          <span class="relative grid size-11 place-items-center rounded-sm bg-ink-700">
+            {a.image && abilityIcons.get(a.image) ? (
+              <img src={abilityIcons.get(a.image)} alt="" width="28" height="28" class="size-7" loading="lazy" />
+            ) : (
+              <span class="text-xs font-bold text-paper-400">{a.slot}</span>
+            )}
+            <span
+              aria-hidden="true"
+              class:list={[
+                'absolute -right-1 -bottom-1 grid size-4 place-items-center rounded-xs text-[0.625rem] leading-none font-bold',
+                a.slot === 4 ? 'bg-copper-400 text-ink-950' : 'bg-ink-600 text-paper-50',
+              ]}
+            >
+              {a.slot}
+            </span>
+          </span>
+          <div class="min-w-0">
+            <p class="font-semibold text-paper-50">{a.name}</p>
+            <ul class="mt-0.5 grid gap-1">
+              {abilityLines(a).map((line) => (
+                <li class="flex gap-2.5">
+                  <span aria-hidden="true" class="mt-[0.55em] size-1 flex-none bg-paper-500" />
+                  <span><PatchText line={line} /></span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      ))
+    }
+  </div>
+</div>

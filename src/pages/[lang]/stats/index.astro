@@ -20,7 +20,7 @@ const configJson = await tierPageConfig(lang, 'stats');
 <BaseLayout lang={lang} seoTitle={t.seo.stats} title={t.nav.stats} description={t.tiers.statsLede}>
   <PageHead title={t.nav.stats} />
   <TierControls lang={lang} active="stats" />
-  <div data-tier-view class="mt-4"></div>
+  <div data-tier-view class="mt-4 min-h-svh"></div>
   <script type="application/json" id="tier-config" set:html={configJson} />
 </BaseLayout>
 

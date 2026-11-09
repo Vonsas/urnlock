@@ -43,10 +43,16 @@
   /* 상단 띠 — 검색창과 메뉴 탭이 놓이는 줄 (OP.GG 의 브랜드 색 띠 자리) */
   --color-band: #0b1a20;
 
-  /* 티어 배지 — 사이트 색(청록 달밤)과 따로 고정 (2026-10-03 사용자: '티어색은 굳이 바꿀 필요 없다'). 예전 황동·구리·크림 */
-  --color-tier-s: #d27c4c;
-  --color-tier-a: #d6ad58;
-  --color-tier-b: #d0c9bd;
+  /* 티어 배지 — 사이트 색(청록 달밤)과 따로 고정. 2026-11-03 사용자: 티어 정하는 사이트(TierMaker)의 빨강 → 연두 다섯 색 그대로.
+     예전 S·A·B 구리·황동·크림 + C·D 어두운 면 */
+  --color-tier-s: #ff7f7f;
+  --color-tier-a: #ffbf7f;
+  --color-tier-b: #ffdf7f;
+  --color-tier-c: #ffff7f;
+  --color-tier-d: #bfff7f;
+
+  /* 사이트 전체 공지 띠 (BaseLayout) — 노랑 */
+  --color-notice: #ffd54f;
 
   /* 첫 페이지 밤 도시 장면 (CityScene) — 하늘 · 달 · 건물 세 겹 · 창문 불빛. 맨 앞 건물(city-near)은 페이지 배경과 같은 색 */
   --color-sky-top: #0b1a20;
@@ -72,6 +78,8 @@
   --color-spirit: #ae94dc;
   /* 부운 — 게임 부운 아이콘(keystat_boon_arrow)의 하늘빛 민트 */
   --color-boon: #99ffd6;
+  /* 소울 — 게임 안 소울 색이라 테마와 상관없이 고정 (2026-11-07 사용자). 값은 기본 테마 강조색과 같다 */
+  --color-soul: #9de5da;
   --color-buff: #8fc063;
   --color-nerf: #e0735a;
 
@@ -93,8 +101,152 @@
   --tracking-label: 0.08em;
 
   --container-page: 80rem;
+  /* 상단바 내용 폭 — 1920px 화면까지는 끝까지, 그보다 넓으면 이 모양 그대로 가운데 (2026-11-04 사용자) */
+  --container-header: 120rem;
   --container-prose: 40rem;
 }
+
+/*
+ * 색 테마 (2026-11-04 사용자 — 푸터에서 고름, lib/themes.ts). 기본(@theme 위 값)이 청록 달밤이고, 여기는 바뀌는 토큰만 덮어쓴다:
+ * 면(ink) · 괘선 · 글자(paper) · 상단 띠 · 밤 도시 장면 · 강조(brass). 티어 배지 · 상점 판 · 무기/활력/영혼 · 상향/하향 색은 정보 색이라 그대로.
+ * 실제 사이트에 색만 입혀 캡처로 고른 값 — 남색은 금빛 달, 먹색은 은색 버튼(베이지는 따로 놀아서), 새벽은 지평선만 따뜻하게,
+ * 숲은 금빛 버튼, 올리브는 연두 크림 버튼. 회청색(조금 밝은 회청)은 '색을 억지로 낮춘 느낌' 이라 뺐다.
+ */
+:root[data-theme='navy'] {
+  --color-ink-950: #0c1424;
+  --color-ink-900: #070b14;
+  --color-ink-850: #0e1626;
+  --color-ink-800: #172238;
+  --color-ink-700: #263656;
+  --color-ink-600: #374a70;
+  --color-line: rgb(205 215 240 / 0.07);
+  --color-line-strong: rgb(205 215 240 / 0.13);
+  --color-paper-50: #eef1f8;
+  --color-paper-200: #c5ccdc;
+  --color-paper-400: #8d97ad;
+  --color-paper-500: #6c7690;
+  --color-band: #0c1628;
+  --color-sky-top: #0b1322;
+  --color-sky-horizon: #4a5f86;
+  --color-moon: #f1e3b8;
+  --color-city-far: #3c4f72;
+  --color-city-mid: #1e2a40;
+  --color-window: #f3d79a;
+  --color-brass-200: #f3e2b8;
+  --color-brass-400: #e6c98a;
+  --color-brass-600: #b0915a;
+}
+:root[data-theme='ink'] {
+  --color-ink-950: #121212;
+  --color-ink-900: #0a0a0a;
+  --color-ink-850: #161616;
+  --color-ink-800: #202020;
+  --color-ink-700: #343434;
+  --color-ink-600: #4a4a4a;
+  --color-line: rgb(235 235 230 / 0.07);
+  --color-line-strong: rgb(235 235 230 / 0.13);
+  --color-paper-50: #f2f2f0;
+  --color-paper-200: #cfcfcb;
+  --color-paper-400: #969691;
+  --color-paper-500: #73736f;
+  --color-band: #141414;
+  --color-sky-top: #111111;
+  --color-sky-horizon: #5a5853;
+  --color-moon: #ece6d6;
+  --color-city-far: #4a4844;
+  --color-city-mid: #262523;
+  --color-window: #e8dcc0;
+  --color-brass-200: #f4f4f2;
+  --color-brass-400: #e2e2de;
+  --color-brass-600: #9a9a95;
+}
+:root[data-theme='dawn'] {
+  --color-ink-950: #101824;
+  --color-ink-900: #090e16;
+  --color-ink-850: #111a26;
+  --color-ink-800: #1b2636;
+  --color-ink-700: #2c3b52;
+  --color-ink-600: #3e5070;
+  --color-line: rgb(225 222 232 / 0.07);
+  --color-line-strong: rgb(225 222 232 / 0.13);
+  --color-paper-50: #f3f1f0;
+  --color-paper-200: #cfd1d8;
+  --color-paper-400: #a2a8b8; /* 배경 그림 위 대비 3.7:1 이상 — 따뜻한 지평선 위에서 #979dac 는 3.3 (#112 리뷰) */
+  --color-paper-500: #757b8b;
+  --color-band: #121a27;
+  --color-sky-top: #131b2b;
+  --color-sky-horizon: #c48a6c;
+  --color-moon: #ffcf96;
+  --color-city-far: #55525e;
+  --color-city-mid: #272b37;
+  --color-window: #ffd49a;
+  --color-brass-200: #ffe2c6;
+  --color-brass-400: #f2b98a;
+  --color-brass-600: #bd8156;
+}
+/* 숲 · 올리브는 2026-11-04 회청색 대신 ('색을 억지로 낮춘 느낌', 다른 테마와 안 겹치는 계열로) */
+:root[data-theme='forest'] {
+  --color-ink-950: #132019;
+  --color-ink-900: #0a110d;
+  --color-ink-850: #131e18;
+  --color-ink-800: #1c2b23;
+  --color-ink-700: #2c4236;
+  --color-ink-600: #3d5a4a;
+  --color-line: rgb(220 235 222 / 0.07);
+  --color-line-strong: rgb(220 235 222 / 0.13);
+  --color-paper-50: #eef3ee;
+  --color-paper-200: #c9d4cb;
+  --color-paper-400: #97a99b;
+  --color-paper-500: #718476;
+  --color-band: #101c16;
+  --color-sky-top: #0f1a15;
+  --color-sky-horizon: #5d7a55;
+  --color-moon: #f0e6b8;
+  --color-city-far: #43604a;
+  --color-city-mid: #1f3127;
+  --color-window: #f2dca0;
+  --color-brass-200: #efe2b0;
+  --color-brass-400: #d8c27a;
+  --color-brass-600: #a08a48;
+}
+:root[data-theme='olive'] {
+  --color-ink-950: #1d1d16;
+  --color-ink-900: #11110c;
+  --color-ink-850: #1b1b14;
+  --color-ink-800: #26261d;
+  --color-ink-700: #3a3a2c;
+  --color-ink-600: #50503d;
+  --color-line: rgb(238 236 220 / 0.07);
+  --color-line-strong: rgb(238 236 220 / 0.13);
+  --color-paper-50: #f3f2ea;
+  --color-paper-200: #d3d1c3;
+  --color-paper-400: #afac98; /* 배경 그림 지평선 위 대비 3.7:1 이상 */
+  --color-paper-500: #81806c;
+  --color-band: #1a1a13;
+  --color-sky-top: #19190f;
+  --color-sky-horizon: #7f7a55;
+  --color-moon: #f1ebcf;
+  --color-city-far: #5a5840;
+  --color-city-mid: #2c2b1f;
+  --color-window: #f2d79a;
+  --color-brass-200: #e8eccb;
+  --color-brass-400: #c9d48f;
+  --color-brass-600: #8e9858;
+}
+
+/* 테마 고르기 칸 (푸터 · 헤더 단추의 펼침) — 바탕(왼쪽 위)과 강조색(오른쪽 아래)을 대각선으로 나눠 보여 준다.
+   값은 위 테마 블록의 ink-950 · brass-400 을 옮겨 적은 것 — 테마 색을 바꾸면 여기도. 헤더 단추(.theme-current)는 지금 테마 토큰을 그대로 */
+.theme-swatch {
+  --swatch-bg: #0b181e;
+  --swatch-accent: #9de5da;
+  background: linear-gradient(135deg, var(--swatch-bg) 55%, var(--swatch-accent) 55%);
+}
+[data-swatch='navy'] { --swatch-bg: #0c1424; --swatch-accent: #e6c98a; }
+[data-swatch='ink'] { --swatch-bg: #121212; --swatch-accent: #e2e2de; }
+[data-swatch='dawn'] { --swatch-bg: #101824; --swatch-accent: #f2b98a; }
+[data-swatch='forest'] { --swatch-bg: #132019; --swatch-accent: #d8c27a; }
+[data-swatch='olive'] { --swatch-bg: #1d1d16; --swatch-accent: #c9d48f; }
+.theme-current { --swatch-bg: var(--color-ink-950); --swatch-accent: var(--color-brass-400); }
 
 @layer base {
   html {
@@ -164,6 +316,18 @@
 }
 
 @layer components {
+  /* 빌드 작성자 설명이 달린 아이템의 점 표시 — 부모(relative) 오른쪽 위 */
+  .note-dot {
+    position: absolute;
+    top: -2px;
+    right: -2px;
+    width: 8px;
+    height: 8px;
+    border-radius: 9999px;
+    background: var(--color-brass-400);
+    box-shadow: 0 0 0 2px var(--color-ink-850);
+  }
+
   /* 아이템 아이콘 (ItemIcon) — 영웅 빌드 탭에 수백 개라 긴 유틸리티 줄 대신 짧은 이름으로 (2026-10-14 최적화: 영웅 페이지 HTML 의 60% 가 class 글자였다).
      크기는 유틸리티(size-6 등)가 덮는다. 분류색은 ii-weapon/vitality/spirit 이 --ii 로 준다 */
   .item-icon {
@@ -213,7 +377,7 @@
     width: 0.8em;
     height: 1em;
     flex: none;
-    color: var(--color-brass-400);
+    color: var(--color-soul);
     background: currentColor;
     mask: var(--soul-mask) center / contain no-repeat;
     -webkit-mask: var(--soul-mask) center / contain no-repeat;
@@ -309,6 +473,94 @@
     height: 0.5rem;
     border-color: var(--color-spirit);
     background: var(--color-spirit);
+  }
+  /* 휴대폰: 16단계가 옆으로 밀지 않고 한 줄에 들어가게 (2026-11-03 사용자: 선마 칸이 오른쪽으로 넘침) —
+     칸을 좁히고 강화 표시는 숫자만 (해금 보라 마름모는 그대로) */
+  @media (width < 40rem) {
+    .st-row {
+      grid-template-columns: 1.5rem minmax(calc(var(--steps) * 0.8125rem), 1fr);
+      gap: 0.25rem;
+    }
+    .st-icon {
+      width: 1.5rem;
+      height: 1.5rem;
+    }
+    .st-icon img {
+      width: 1.0625rem;
+      height: 1.0625rem;
+    }
+    .st-line {
+      height: 1.5rem;
+    }
+    .st-mark {
+      height: 1rem;
+      padding: 0 0.125rem;
+    }
+    .st-mark:not(.st-unlock)::before {
+      display: none;
+    }
+  }
+
+  /* 헤더 메뉴 줄이 넘쳐 옆으로 밀 수 있을 때 더 밀 수 있는 쪽 끝을 흐리게 (SiteHeader 스크립트가 오른쪽 data-more · 왼쪽 data-less).
+     흐림 폭 2.5rem 을 바꾸면 SiteHeader 스크립트의 40(지금 탭을 흐림 밖으로 미는 거리)도 같이 */
+  [data-site-nav][data-more] {
+    mask-image: linear-gradient(to right, #000 calc(100% - 2.5rem), transparent);
+  }
+  [data-site-nav][data-less] {
+    mask-image: linear-gradient(to left, #000 calc(100% - 2.5rem), transparent);
+  }
+  [data-site-nav][data-more][data-less] {
+    mask-image: linear-gradient(to right, transparent, #000 2.5rem, #000 calc(100% - 2.5rem), transparent);
+  }
+  /* 메뉴 '랭킹' 아래 두 칸 (SiteHeader) — popover 의 기본 가운데 배치를 지우고 스크립트가 '랭킹' 바로 아래에 둔다 */
+  .nav-pop {
+    inset: auto;
+    margin: 0;
+    min-width: 9rem;
+    padding: 0.25rem;
+    border: 0;
+    border-radius: var(--radius-md);
+    background: var(--color-ink-850);
+    color: var(--color-paper-200);
+    box-shadow: inset 0 0 0 1px var(--color-line), 0 12px 32px rgb(0 0 0 / 0.5);
+  }
+  .nav-pop a {
+    display: block;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.9375rem;
+    white-space: nowrap;
+    transition: background-color 150ms, color 150ms;
+  }
+  .nav-pop a[aria-current='page'] {
+    font-weight: 600;
+    color: var(--color-paper-50);
+  }
+  .nav-pop a:hover,
+  .nav-pop a:focus-visible {
+    background: var(--color-ink-800);
+    color: var(--color-paper-50);
+  }
+  /* 헤더 테마 단추의 펼침 (ThemeButton) — 줄마다 견본 칸 + 이름 */
+  .nav-pop button {
+    display: flex;
+    width: 100%;
+    align-items: center;
+    gap: 0.625rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: var(--radius-sm);
+    font-size: 0.875rem;
+    white-space: nowrap;
+    transition: background-color 150ms, color 150ms;
+  }
+  .nav-pop button:hover,
+  .nav-pop button:focus-visible {
+    background: var(--color-ink-800);
+    color: var(--color-paper-50);
+  }
+  .nav-pop button[aria-pressed='true'] {
+    font-weight: 600;
+    color: var(--color-paper-50);
   }
 
   /* 작은 라벨 */
@@ -521,6 +773,47 @@
     font-weight: 700;
     color: var(--color-paper-50);
   }
+  /* 영웅 상세 = 큰 면 하나 (2026-11-07 사용자: 같은 박스를 늘어놓아 AI 대시보드 같았다). 구역은 박스 대신 줄로 나눈다. 휴대폰은 화면 끝까지 */
+  .hero-sheet {
+    background-color: var(--color-ink-900);
+    border: 1px solid var(--color-line);
+    border-radius: var(--radius-lg);
+  }
+  @media (width < 40rem) {
+    .hero-sheet {
+      margin-inline: -1rem;
+      border-inline: 0;
+      border-radius: 0;
+    }
+  }
+  .hero-sheet .panel {
+    background-color: transparent;
+    border: 0;
+    border-radius: 0;
+  }
+  .hero-sheet .panel-title {
+    font-weight: 600;
+  }
+  /* .hero-sheet .panel 의 border: 0 보다 뒤에, 같은 명시도로 — 안 그러면 Panel 에 줄이 안 그려진다 (#149 리뷰) */
+  .hero-sheet .sheet-stack > * + * {
+    border-top: 1px solid var(--color-line);
+  }
+  .sheet-split {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .hero-sheet .sheet-split > * + * {
+    border-top: 1px solid var(--color-line);
+  }
+  @media (width >= 64rem) {
+    .sheet-split {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .hero-sheet .sheet-split > * + * {
+      border-top: 0;
+      border-left: 1px solid var(--color-line);
+    }
+  }
   .panel-link {
     margin-left: auto;
     font-size: 0.8125rem;
@@ -603,7 +896,8 @@
     color: var(--color-paper-50);
   }
   .seg > [aria-pressed="true"],
-  .seg > [aria-current="true"] {
+  .seg > [aria-current="true"],
+  .seg > [aria-current="page"] {
     background-color: var(--color-ink-700);
     color: var(--color-paper-50);
   }
@@ -662,12 +956,6 @@
     font-weight: 800;
     font-variant-numeric: tabular-nums;
     clip-path: polygon(0.5rem 0, 100% 0, 100% 100%, 0.5rem 100%, 0 50%);
-  }
-
-  /* 보기 전환: 루트의 data-view-mode 에 따라 카드/표 중 하나만 */
-  [data-view-mode="grid"] [data-pane="table"],
-  [data-view-mode="table"] [data-pane="grid"] {
-    display: none !important; /* .grid 같은 유틸리티보다 우선 */
   }
 
   /* 필터로 숨겨진 항목 */

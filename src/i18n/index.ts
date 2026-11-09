@@ -28,6 +28,11 @@ export function stripLocale(pathname: string): string {
   return isLocale(first) ? rest.join('/') : pathname.replace(/^\//, '');
 }
 
+/** 언어를 모를 때(hreflang x-default) 보낼 주소 — 첫 화면은 저장된 언어로 넘기는 `/`, 나머지는 한국어 */
+export function xDefault(path = ''): string {
+  return path.replace(/^\/+|\/+$/g, '') ? localePath(DEFAULT_LOCALE, path) : '/';
+}
+
 /** 언어 접두어가 붙은 내부 링크를 만든다. path 는 'heroes/abrams' 처럼 앞뒤 슬래시 없이. */
 export function localePath(lang: Locale, path = ''): string {
   const clean = path.replace(/^\/+|\/+$/g, '');

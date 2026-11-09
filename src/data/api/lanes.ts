@@ -12,7 +12,7 @@
  * - statlocker 는 같은 '9분' 인데 1인당 소울이 7,400–8,100 으로 우리(원본 매치 9분 약 6,100–6,500)보다 높다 — 계산 시점이 다른 것으로 보이며
  *   방식이 공개돼 있지 않아 숫자를 1:1 로 맞추지 않는다.
  */
-import { API_BASE, load, warn } from './fetch';
+import { API_BASE, load, reusable, warn } from './fetch';
 import { pool } from './tiers';
 
 export const LANE_SAMPLE_S = 540;
@@ -89,7 +89,11 @@ function tallyPage(json: unknown): { rows: number; matches: number; heroes: Lane
   return { rows: list.length, matches, heroes };
 }
 
-export async function loadLaneStats(): Promise<LaneRaw | null> {
+export function loadLaneStats(): Promise<LaneRaw | null> {
+  return reusable('lanes', loadLaneStatsNow);
+}
+
+async function loadLaneStatsNow(): Promise<LaneRaw | null> {
   // 한 시간 단위로 맞춰 캐시 이름이 실행마다 바뀌지 않게
   const to = Math.floor(Date.now() / 1000 / 3600) * 3600;
   const from = to - LANE_DAYS * 86_400;

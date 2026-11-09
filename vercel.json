@@ -2,13 +2,24 @@
   "$schema": "https://openapi.vercel.sh/vercel.json",
   "framework": "astro",
   "installCommand": "npx --yes pnpm@12.6.0 install --frozen-lockfile",
-  "buildCommand": "npx --yes pnpm@12.6.0 run build",
+  "buildCommand": "npx --yes pnpm@12.6.0 run build && node tools/vercel-to-pages.mjs",
   "ignoreCommand": "bash tools/ignore-build.sh",
   "outputDirectory": "dist",
   "regions": [
     "hnd1"
   ],
   "redirects": [
+    {
+      "source": "/((?!api/|health\\.json).*)",
+      "has": [
+        {
+          "type": "host",
+          "value": "origin.urnlock.com"
+        }
+      ],
+      "destination": "https://www.urnlock.com/$1",
+      "permanent": true
+    },
     {
       "source": "/:lang(ko|en|zh)/patches/:id(2026-10-02|2026-10-03|2026-10-07|2026-10-10)/",
       "destination": "/:lang/patches/",
@@ -36,7 +47,11 @@
       "headers": [
         {
           "key": "Content-Security-Policy",
-          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://static.urnlock.com https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline' https://static.urnlock.com; img-src 'self' data: blob: https:; font-src 'self' data: https://static.urnlock.com; connect-src 'self' https://api.deadlock-api.com https://cloudflareinsights.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+          "value": "default-src 'self'; script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob: https:; font-src 'self' data:; connect-src 'self' https://api.deadlock-api.com https://cloudflareinsights.com; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'"
+        },
+        {
+          "key": "Strict-Transport-Security",
+          "value": "max-age=63072000"
         },
         {
           "key": "X-Content-Type-Options",
@@ -62,10 +77,6 @@
         {
           "key": "Cache-Control",
           "value": "public, max-age=31536000, immutable"
-        },
-        {
-          "key": "Access-Control-Allow-Origin",
-          "value": "*"
         }
       ]
     },

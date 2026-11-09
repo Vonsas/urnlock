@@ -2,10 +2,14 @@
 /**
  * `/` — 저장된 언어(localStorage)가 있으면 그 언어로, 없으면 기본 언어(한국어)로 보낸다.
  * 정적 사이트라 서버 리다이렉트 대신 즉시 실행되는 인라인 스크립트를 쓴다.
+ * 검색엔진엔 '언어 고르기 첫 주소'(hreflang x-default)로 올린다 (2026-11-03) — 예전엔 noindex 라 도메인 첫 주소가 검색에 없어서
+ * 구글이 사이트 이름(WebSite 정보 — 도메인 첫 주소에서만 읽음)을 못 썼고, 'urnlock.com' 으로 걸린 링크도 언어 페이지로 이어지지 않았다.
  */
-import { DEFAULT_LOCALE, LANG_STORAGE_KEY, LOCALES, localePath } from '../i18n';
+import { DEFAULT_LOCALE, LANG_STORAGE_KEY, LOCALES, LOCALE_META, localePath, useTranslations } from '../i18n';
+import { siteSchema } from '../lib/site-schema';
 
 const fallback = localePath(DEFAULT_LOCALE);
+const t = useTranslations(DEFAULT_LOCALE);
 ---
 
 <!doctype html>
@@ -13,10 +17,14 @@ const fallback = localePath(DEFAULT_LOCALE);
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <meta name="robots" content="noindex" />
+    {Astro.site && <link rel="canonical" href={new URL('/', Astro.site).href} />}
+    {Astro.site && LOCALES.map((code) => <link rel="alternate" hreflang={LOCALE_META[code].htmlLang} href={new URL(localePath(code), Astro.site)} />)}
+    {Astro.site && <link rel="alternate" hreflang="x-default" href={new URL('/', Astro.site).href} />}
+    <meta name="description" content={t.site.description} />
     {/* 네이버 서치어드바이저 소유 확인 (2026-10-06) — 네이버는 첫 주소(/)를 읽는다 */}
     <meta name="naver-site-verification" content="5b5899804ef40924b0c2f0dfbbf651bdae55f129" />
-    <title>Urnlock</title>
+    <title>{`${t.site.name} — ${t.site.subtitle}`}</title>
+    {Astro.site && <script type="application/ld+json" set:html={siteSchema(Astro.site)} />}
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     {/* 구글 검색 결과 아이콘은 비트맵(48px 배수)을 쓴다 — tools/build-favicons.mjs */}
     <link rel="icon" type="image/png" sizes="96x96" href="/favicon-96.png" />

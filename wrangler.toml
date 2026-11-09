@@ -1,0 +1,7 @@
+# Cloudflare Pages 프로젝트 urnlock 설정 (#52, 2026-10-30) — `wrangler pages deploy` · `wrangler pages dev` 가 읽는다.
+# 정적 파일은 dist/, /api 프록시 함수는 functions/api/[[path]].js (dist/_routes.json 이 /api/* 만 함수로 보낸다 — tools/build-pages-config.mjs).
+# compatibility_date 는 2024-11-11 이후여야 함수의 fetch(…, { cache: 'no-store' }) 가 동작한다 (docs/plan-cloudflare-split.md 1절).
+# 비밀값(PROXY_SECRET)은 여기 적지 않는다 — Pages 대시보드 시크릿.
+name = "urnlock"
+pages_build_output_dir = "dist"
+compatibility_date = "2024-11-11"

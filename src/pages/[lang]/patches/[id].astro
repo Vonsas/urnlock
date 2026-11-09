@@ -18,6 +18,6 @@ const note = notes.find((n) => n.id === Astro.params.id);
 if (!note) return Astro.redirect(localePath(lang, 'patches'));
 ---
 
-<BaseLayout lang={lang} seoTitle={fill(t.seo.patch, { date: note.date.replaceAll('-', '.') })} title={`${t.nav.patches} ${note.date.replaceAll('-', '.')}`} description={note.title}>
+<BaseLayout lang={lang} seoTitle={fill(t.seo.patch, { date: note.date.replaceAll('-', '.') })} title={`${t.nav.patches} ${note.date.replaceAll('-', '.')}`} description={fill(t.seo.patchDesc, { date: note.date.replaceAll('-', '.'), title: note.title })}>
   <PatchNoteView lang={lang} note={note} notes={notes} heroes={heroes} items={items} />
 </BaseLayout>

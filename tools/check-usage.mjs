@@ -37,7 +37,7 @@ const UNITS = {
 };
 
 /**
- * Vercel Hobby 무료 한도 (2026-10-29 vercel.com/docs/plans/hobby · vercel-blob/usage-and-pricing).
+ * Vercel Hobby 무료 한도 (2026-10-29 vercel.com/docs/plans/hobby).
  * `ServiceName` 을 이름으로 찾는다 — 실제 이름 · 단위가 다르면 로그의 '모르는 항목' 을 보고 고친다.
  * size: 저장 용량처럼 쌓이는 값은 날마다 더하지 않고 가장 큰 날 값.
  */
@@ -49,10 +49,6 @@ const VERCEL_LIMITS = [
   { label: 'Active CPU', match: /active cpu/i, kind: 'time', limit: 4 * HOUR },
   { label: 'Provisioned Memory', match: /provisioned memory/i, kind: 'memtime', limit: 360 },
   { label: '이미지 변환', match: /image (optimization )?transformations?/i, kind: 'count', limit: 5_000 },
-  { label: 'Blob 저장', match: /blob storage/i, kind: 'data', limit: 1 * GB, size: true },
-  { label: 'Blob 읽기(캐시 안 됨)', match: /blob simple operations?/i, kind: 'count', limit: 10_000 },
-  { label: 'Blob 올리기 · 목록', match: /blob advanced operations?/i, kind: 'count', limit: 2_000 },
-  { label: 'Blob 전송', match: /blob data transfer/i, kind: 'data', limit: 10 * GB },
 ];
 
 /** Upstash Redis 무료 (2026-10-29 upstash.com/pricing/redis) — 데이터베이스마다 */

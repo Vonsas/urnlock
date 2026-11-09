@@ -16,15 +16,18 @@ import { loadHeroInsights, MASTERY_BUCKETS } from './api/insights';
 import { loadAuthorBuilds, loadGameBuild, loadSteamNames, warn } from './api/fetch';
 import { loadBuildPerf, loadStandings, loadTopBuildUsage } from './api/builds';
 import { DURATION_BUCKETS, loadHeroCharts } from './api/hero-charts';
+import { loadLeaderboardInfo } from './api/leaderboard';
+import { loadItemTopHeroes, type ItemTopHeroes } from './api/item-stats';
 import { PRO_BUILDS } from './pro-builds';
 import { PRO_PLAYERS } from './pro-players';
-import { PATCH_BANNERS } from './patch-banners';
+import { isPatchBanner } from './patch-banners';
 import { mockHeroes, type MockHero } from './mock/heroes';
 import { mockItems, TIER_COST } from './mock/items';
 import { mockPatch } from './mock/patch';
 import { pick } from './mock/localized';
 
 export type * from './types';
+export type { ItemTopHeroes } from './api/item-stats';
 
 /** 사용할 데이터 출처. 'mock' 으로 바꾸면 네트워크 없이 샘플로 빌드한다 */
 export const DATA_SOURCE: 'mock' | 'api' = 'api';
@@ -194,10 +197,34 @@ export async function getItems(lang: Locale): Promise<Item[]> {
   }));
 }
 
+let itemTopHeroesPending: Promise<ItemTopHeroes | null> | undefined;
+/** 아이템 상세 창 '많이 산 영웅' 3명 — 최근 14일 랭크 매치 (src/data/api/item-stats.ts). 목업·API 실패면 null */
+export async function getItemTopHeroes(): Promise<ItemTopHeroes | null> {
+  if (DATA_SOURCE !== 'api') return null;
+  itemTopHeroesPending ??= Promise.all([getItems('en'), getHeroes('en')]).then(([items, heroes]) =>
+    loadItemTopHeroes(
+      items.flatMap((i) => (i.id === undefined ? [] : [i.id])),
+      heroes.flatMap((h) => (h.id === undefined ? [] : [h.id])),
+    ),
+  );
+  return itemTopHeroesPending;
+}
+
 /** 랭크 단계 이름·휘장 (전적 페이지). 목업에는 없어 빈 배열 — 화면은 단계 번호로 표시 */
 export async function getRanks(lang: Locale): Promise<Rank[]> {
   const data = await api();
   return data?.ranks[lang] ?? [];
+}
+
+let leaderboardPending: Promise<{ generatedAt: number; regions: NonNullable<Awaited<ReturnType<typeof loadLeaderboardInfo>>> } | null> | undefined;
+/**
+ * 전적 페이지 순위표의 계정 · 프로필 사진 · 주 영웅 (src/data/api/leaderboard.ts). 순위는 브라우저가 지금 순위표로 그리고 이건 덧붙이는 정보.
+ * 가벼운 빌드(미리보기)에서도 받는다 — 요청 20번쯤 · 약 40초. 실패하면 null → 순위표는 이름만.
+ */
+export function getLeaderboardInfo() {
+  if (DATA_SOURCE !== 'api') return Promise.resolve(null);
+  leaderboardPending ??= loadLeaderboardInfo().then((regions) => (regions ? { generatedAt: Math.floor(Date.now() / 1000), regions } : null));
+  return leaderboardPending;
 }
 
 let profilePending: ReturnType<typeof loadHeroProfiles> | undefined;
@@ -358,9 +385,9 @@ export async function getHeroCharts(heroId: number | undefined): Promise<HeroCha
 const PRO_BUILDS_PER_HERO = 1;
 /**
  * 이보다 오래 손대지 않은 게임 빌드는 보여주지 않는다 (일) — 프로 · 직접 적은 ID · 최상위권 모두.
- * 2026-10-02 사용자 결정: 한 달 반 넘게 갱신 안 된 빌드는 패치를 못 따라가 있을 가능성이 크다.
+ * 2026-10-02 사용자 결정: 오래 갱신 안 된 빌드는 패치를 못 따라가 있을 가능성이 크다. 2026-11-08 사용자: 45일 → 21일.
  */
-const BUILD_MAX_AGE_DAYS = 45;
+const BUILD_MAX_AGE_DAYS = 21;
 let topUsagePending: ReturnType<typeof loadTopBuildUsage> | undefined;
 let perfPending: ReturnType<typeof loadBuildPerf> | undefined;
 /** 영웅 페이지 38개 × 3개 언어가 같은 빌드를 부르므로 한 번 받은 결과를 재사용 (빌드는 캐시 없이 매번 새로 받기 때문) */
@@ -376,14 +403,14 @@ const authorBuilds = memo((accountId: number) => loadAuthorBuilds(accountId));
 const gameBuild = memo(([heroId, buildId]: [number, number]) => loadGameBuild(heroId, buildId));
 const steamNames = memo((ids: number[]) => loadSteamNames(ids));
 const standingsOf = memo((authors: Array<{ id: number; names: string[] }>) => loadStandings(authors));
-/** 상위권 인기 빌드 수 */
-const TOP_BUILDS = 3;
+/** 상위권 인기 빌드 수 (2026-11-08 사용자: 3 → 5개. 최소 100판은 loadTopBuildUsage) */
+const TOP_BUILDS = 5;
 
 /**
  * 영웅 빌드 탭의 게임 빌드들.
  * - 프로: src/data/pro-players.ts 의 선수가 올린 빌드(자동) + src/data/pro-builds.ts 에 직접 적은 빌드 ID.
  *   직접 적은 ID 를 그 영웅의 빌드로 찾지 못하면 빌드 로그에 경고하고 적은 정보만 보여준다.
- * - 상위권(예지자+) 사용 순위는 추천 빌드에 표시만 (usage).
+ * - 상위권 인기 1–5위 (top) — 추천 빌드가 그 안에 있으면 태그만 (usage).
  */
 export async function getHeroBuilds(heroSlug: string): Promise<{ pro: ProBuild[]; top: TopBuild[]; patchFrom?: number }> {
   // 미리보기(가벼운 빌드)에도 빌드는 받는다 (2026-10-23: 빌드 화면을 고쳐도 미리보기에서 볼 수 없었다). 티어 데이터가 없으면 14일은 지금 기준으로
@@ -416,25 +443,26 @@ export async function getHeroBuilds(heroSlug: string): Promise<{ pro: ProBuild[]
 
   const from = tiers?.windows.find((w) => w.key === '14d')?.from ?? (LIGHT_BUILD ? Math.floor(Date.now() / 1000) - 14 * 86_400 : undefined);
   let top: TopBuild[] = [];
-  // 상위권(예지자+)이 매치 시작 때 고른 빌드 순위 — 따로 보여주지 않고, 추천 빌드가 그 안에 있으면 표시만 한다
-  // (많이 쓴다고 좋은 빌드는 아니라서 — 사용자가 직접 보고 좋으면 추천에 추가한다, 2026-10-02)
+  // 상위권(예지자+)이 매치 시작 때 고른 빌드 순위
   if (from) {
     topUsagePending ??= loadTopBuildUsage(
       from,
       heroes.flatMap((h) => (h.id === undefined ? [] : [h.id])),
     );
     const usage = (await topUsagePending).get(heroId) ?? [];
-    for (const p of pro) {
-      if (usage[0]?.allRanks) break; // 전체 랭크 순위로는 '상위권 인기' 배지를 달지 않는다
-      const i = usage.findIndex((u) => u.buildId === p.buildId);
-      if (i >= 0) p.usage = { rank: i + 1, players: usage[i].players, matches: usage[i].matches };
-    }
-    // 상위권 인기 1–3위 — 2026-10-02 에 뺐다가 10-03 사용자 요청으로 다시 (오래된 빌드를 뺀 뒤 많이 쓴 순)
+    // 상위권 인기 1–5위 — 2026-10-02 에 뺐다가 10-03 사용자 요청으로 다시 (오래된 빌드를 뺀 뒤 많이 쓴 순)
     const builds = await Promise.all(usage.map((u) => gameBuild([heroId, u.buildId])));
     top = usage
       .flatMap((u, i) => (builds[i] && builds[i]!.updatedAt >= cutoff ? [{ matches: u.matches, players: u.players, build: builds[i]!, ...(u.allRanks && { allRanks: true }) }] : []))
       .slice(0, TOP_BUILDS)
       .map((b, i) => ({ rank: i + 1, ...b }));
+    // '상위권 인기' 태그는 이 순위 안의 추천 빌드에만 (예전엔 사용 순위 어디든 붙어 57위 142판에도 붙었다 — 2026-11-08 사용자). 전체 랭크 순위(막 나온 영웅)엔 달지 않는다
+    if (!top[0]?.allRanks) {
+      for (const p of pro) {
+        const t = top.find((b) => b.build.buildId === p.buildId);
+        if (t) p.usage = { rank: t.rank, players: t.players, matches: t.matches };
+      }
+    }
     if (top.length) {
       const names = (await steamNames(top.map((b) => b.build.authorId))) ?? {};
       top = top.map((b) => ({ ...b, authorName: names[b.build.authorId] || undefined }));
@@ -478,7 +506,7 @@ export async function getPatchNotes(lang: Locale): Promise<PatchNote[]> {
  */
 export async function getPatchBanner(lang: Locale): Promise<(PatchNote & { image: string }) | null> {
   if (!GAME_IMAGES) return null;
-  const note = (await getPatchNotes(lang)).find((n) => n.image && PATCH_BANNERS.includes(n.image));
+  const note = (await getPatchNotes(lang)).find((n) => n.image && isPatchBanner(n.image));
   return note ? (note as PatchNote & { image: string }) : null;
 }
 

@@ -15,7 +15,7 @@
  * 이 파일은 tsx 로 도는 수집 스크립트도 import 하므로 import.meta.env 같은 Astro 전용 기능을 쓰지 않는다.
  */
 import { API_BASE, loadPatches } from './fetch';
-import { isPatchPost } from './patch-posts';
+import { startsPatchWindow } from './patch-posts';
 
 /** 숙련자 = 그 영웅을 평생 이만큼 이상 한 플레이어 (min_hero_matches_total) */
 export const EXPERIENCED_GAMES = 80;
@@ -54,7 +54,7 @@ export interface TierArchive {
 export async function patchStarts(): Promise<number[]> {
   const patches = await loadPatches();
   // 같은 시각이 두 번이면 '이전 패치' 기간이 0 이 된다 → 한 번만
-  return [...new Set((patches ?? []).filter(isPatchPost).map((p) => Math.floor(Date.parse(p.pub_date) / 1000)))].sort((a, b) => b - a);
+  return [...new Set((patches ?? []).filter(startsPatchWindow).map((p) => Math.floor(Date.parse(p.pub_date) / 1000)))].sort((a, b) => b - a);
 }
 
 export const floorHour = (t: number) => Math.floor(t / HOUR) * HOUR;

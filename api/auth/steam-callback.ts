@@ -2,7 +2,7 @@
  * 스팀 인증 돌아옴 — 스팀이 붙여 준 값을 **스팀 서버에 다시 물어** 진짜인지 확인한 뒤(check_authentication) 서명된 쿠키를 준다.
  * 확인 항목: openid.* 값 중복 없음 · 돌아온 주소가 우리 콜백인지 · 스팀 로그인 주소인지 · 계정 주소 모양 · 같은 응답 재사용(nonce) 여부 · 스팀의 is_valid:true.
  */
-import { cookies, originOf, redirect, safeReturn, setCookie } from '../_lib/http.js';
+import { cookies, originOf, proxyBlocked, redirect, safeReturn, setCookie } from '../_lib/http.js';
 import { redis } from '../_lib/redis.js';
 import { userCookies } from '../_lib/session.js';
 import { authorSnapshot } from '../_lib/tips-store.js';
@@ -19,6 +19,8 @@ const SIGNED_REQUIRED = ['op_endpoint', 'claimed_id', 'identity', 'return_to', '
 const STATE_COOKIE = 'ul_st';
 
 export async function GET(request: Request): Promise<Response> {
+  const blocked = proxyBlocked(request); // 요청 수 제한은 state 확인 뒤에 세지만, 입구 검사(#51)는 맨 앞에서
+  if (blocked) return blocked;
   const url = new URL(request.url);
   const q = url.searchParams;
   const back = safeReturn(q.get('return'));

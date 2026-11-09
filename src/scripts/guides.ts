@@ -34,11 +34,12 @@ import { findProfanity } from '../lib/profanity';
 import { getJson, isDown, loadFullSnapshot, loadSnapshot } from './api-result';
 
 export interface GuidesConfig {
-  mode: 'list' | 'view' | 'write';
+  /** list = 영웅 가이드 목록, game = 게임 가이드 목록 (2026-11-04) */
+  mode: 'list' | 'game' | 'view' | 'write';
   locale: string;
   heroes: Record<number, { name: string; slug: string; icon?: string }>;
   ranks: Record<number, { name: string; icon?: string }>;
-  paths: { list: string; view: string; write: string; heroes: string; players: string };
+  paths: { list: string; game: string; view: string; write: string; heroes: string; players: string };
   limits: {
     titleMin: number;
     titleMax: number;
@@ -60,6 +61,9 @@ interface Session {
 
 const cfgEl = document.getElementById('guides-config');
 const root = document.querySelector<HTMLElement>('[data-guides-view]');
+// 페이지가 잡아 둔 한 화면 높이(화면 밀림 방지) — 보기 화면은 글을 그린 뒤 푼다. 목록은 그대로 둔다:
+// 지금은 가이드가 적어 목록이 짧은데, 풀면 푸터가 화면 안으로 올라와 밀림이 0.24 다 (빈 칸이 생기는 쪽을 골랐다, 2026-11-05)
+const settle = () => root?.classList.remove('min-h-svh');
 
 if (cfgEl && root) {
   const cfg = JSON.parse(cfgEl.textContent ?? '{}') as GuidesConfig;
@@ -70,7 +74,7 @@ if (cfgEl && root) {
   const nf = new Intl.NumberFormat(cfg.locale);
   const df = new Intl.DateTimeFormat(cfg.locale, { dateStyle: 'medium' });
   const fill = (s: string, v: Record<string, string | number>) => s.replace(/\{(\w+)\}/g, (_, k: string) => String(v[k] ?? ''));
-  // 'general' = 일반 가이드 (영웅 칸 0)
+  // 'general' = 게임 가이드 (영웅 칸 0)
   const heroBySlug = new Map<string, number>([['general', GENERAL], ...Object.entries(cfg.heroes).map(([id, h]) => [h.slug, Number(id)] as [string, number])]);
   const heroName = (id: number) => (id === GENERAL ? t.generalGuide : (cfg.heroes[id]?.name ?? ''));
   const pad = (n: number) => String(n).padStart(2, '0');
@@ -97,7 +101,7 @@ if (cfgEl && root) {
   const ICON_ARROW_UP = '<path d="M8 12V4M4.5 7.5 8 4l3.5 3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
   const ICON_ARROW_DOWN = '<path d="M8 4v8M4.5 8.5 8 12l3.5-3.5" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" fill="none"/>';
   const ICON_IMAGE = '<rect x="2" y="3" width="12" height="10" rx="1" stroke="currentColor" stroke-width="1.5" fill="none"/><path d="m3.5 11.5 3-3 2 2 2-2.5 2 3.5" stroke="currentColor" stroke-width="1.3" fill="none" stroke-linejoin="round"/><circle cx="6" cy="6.5" r="1" fill="currentColor"/>';
-  // 일반 가이드 자리 표시 — 펼친 책 모양
+  // 게임 가이드 자리 표시 — 펼친 책 모양
   const ICON_BOOK = '<path d="M8 4.5C6.5 3.4 4.4 3 2 3v9.5c2.4 0 4.5.4 6 1.5 1.5-1.1 3.6-1.5 6-1.5V3c-2.4 0-4.5.4-6 1.5Zm0 0V14" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round" fill="none"/>';
   const heroIcon = (id: number, cls: string) => {
     if (id === GENERAL) return el('span', { class: `${cls} grid place-items-center bg-ink-800 text-brass-400`, title: t.generalGuide }, svg(ICON_BOOK, 'size-1/2'));
@@ -314,10 +318,19 @@ if (cfgEl && root) {
     );
 
   // ─── 목록 ───────────────────────────────────────────────────
-  async function renderList() {
-    // hero: 'heroes' 영웅 가이드 전체 · 영웅 slug. 일반 가이드(영웅 칸 0)는 2026-10-09 목록에서 뺐다 (사용자: 영웅만 — 운영·맵 정보는 따로)
+  async function renderList(game: boolean) {
+    // hero: 'heroes' 영웅 가이드 전체 · 영웅 slug · 'general' 게임 가이드(영웅 칸 0).
+    // 게임 가이드는 2026-10-09 목록에서 뺐다가 2026-11-04 따로 페이지로 (/guides/game/, 사용자: 메뉴 '가이드' 아래 영웅 · 게임 가이드로 아예 분리)
     const fromUrl = params.get('hero');
-    const state = { hero: fromUrl && fromUrl !== 'general' && heroBySlug.has(fromUrl) ? fromUrl : 'heroes', sort: params.get('sort') === 'new' ? 'new' : 'votes' };
+    // 예전 주소 ?hero=general 은 게임 가이드 페이지로
+    if (!game && fromUrl === 'general') {
+      const keep = new URLSearchParams();
+      if (params.get('sort') === 'new') keep.set('sort', 'new');
+      if (mock) keep.set('guidemock', mock);
+      location.replace(`${cfg.paths.game}${keep.toString() ? `?${keep}` : ''}`);
+      return;
+    }
+    const state = { hero: game ? 'general' : fromUrl && fromUrl !== 'general' && heroBySlug.has(fromUrl) ? fromUrl : 'heroes', sort: params.get('sort') === 'new' ? 'new' : 'votes' };
     // 위: 영웅 초상 줄 → 아래: [추천순 | 최신순]
     const sortBtns = (['votes', 'new'] as const).map((k) => {
       const b = el('button', { type: 'button' }, k === 'votes' ? t.sortVotes : t.sortNew);
@@ -343,7 +356,8 @@ if (cfgEl && root) {
     strip.append(...heroBtns.map(([, b]) => b));
     const sortBar = el('div', { class: 'mt-4 flex flex-wrap items-center gap-3' }, el('div', { class: 'seg', role: 'group' }, ...sortBtns.map(([, b]) => b)), count);
     const grid = el('ul', { class: 'mt-5 grid grid-cols-1 gap-3 md:grid-cols-2' });
-    root!.replaceChildren(strip, sortBar, grid);
+    // 게임 가이드엔 영웅 초상 줄이 없다
+    root!.replaceChildren(...(game ? [] : [strip]), sortBar, grid);
 
     const card = (g: GuideSummary) =>
       el(
@@ -391,7 +405,7 @@ if (cfgEl && root) {
         b.classList.toggle('opacity-60', picked && !on);
       });
       const q = new URLSearchParams();
-      if (state.hero !== 'heroes') q.set('hero', state.hero);
+      if (!game && state.hero !== 'heroes') q.set('hero', state.hero);
       if (state.sort === 'new') q.set('sort', 'new');
       if (mock) q.set('guidemock', mock);
       history.replaceState(null, '', q.toString() ? `?${q}` : location.pathname);
@@ -428,7 +442,7 @@ if (cfgEl && root) {
         ...(stale ? [el('li', { class: 'text-sm text-paper-200 md:col-span-2' }, t.staleNote)] : []),
         ...(list.length ? list.map(card) : [el('li', { class: 'md:col-span-2' }, message(t.empty))]),
       );
-      // 글쓰기 버튼은 지금 고른 영웅을 들고 간다
+      // 글쓰기 버튼은 지금 고른 영웅을 들고 간다 (게임 가이드 페이지는 'general')
       const write = document.querySelector<HTMLAnchorElement>('[data-guides-write-link]');
       const pre = state.hero === 'heroes' ? '' : state.hero;
       if (write) write.href = `${cfg.paths.write}${pre ? `?hero=${pre}` : ''}${mock ? `${pre ? '&' : '?'}guidemock=${mock}` : ''}`;
@@ -474,11 +488,15 @@ if (cfgEl && root) {
       }
     } catch (e) {
       root!.replaceChildren(message((e as Error).message === 'busy' ? t.errBusy : t.loadError, 'text-nerf'));
+      settle();
       return;
     }
-    const back = el('a', { href: cfg.paths.list, class: 'text-sm text-paper-400 hover:text-paper-50' }, `← ${t.back}`);
+    // 게임 가이드는 게임 가이드 목록으로
+    const listPath = guide?.hero === GENERAL ? cfg.paths.game : cfg.paths.list;
+    const back = el('a', { href: listPath, class: 'text-sm text-paper-400 hover:text-paper-50' }, `← ${t.back}`);
     if (!guide) {
       root!.replaceChildren(back, message(t.notFound));
+      settle();
       return;
     }
     const g = guide;
@@ -520,7 +538,7 @@ if (cfgEl && root) {
     delBtn?.addEventListener('click', async () => {
       if (!confirm(t.deleteConfirm)) return;
       const ok = mock ? true : (await fetch(`/api/guides?id=${g.id}`, { method: 'DELETE' }).catch(() => null))?.ok;
-      if (ok) location.href = cfg.paths.list;
+      if (ok) location.href = listPath;
       else status.textContent = t.deleteFailed;
     });
     const reportBtn = mine ? null : el('button', { type: 'button', class: `${quiet} ml-auto` }, t.report);
@@ -571,7 +589,7 @@ if (cfgEl && root) {
       share.textContent = t.copied;
       setTimeout(() => (share.textContent = t.share), 1500);
     });
-    const heroHref = g.hero === GENERAL ? `${cfg.paths.list}?hero=general` : `${cfg.paths.heroes}${hero?.slug ?? ''}/#guide`;
+    const heroHref = g.hero === GENERAL ? cfg.paths.game : `${cfg.paths.heroes}${hero?.slug ?? ''}/#guide`;
 
     const head = el(
       'header',
@@ -624,6 +642,7 @@ if (cfgEl && root) {
         ),
       ),
     );
+    settle();
     if (location.hash) document.querySelector(location.hash)?.scrollIntoView();
   }
 
@@ -740,8 +759,8 @@ if (cfgEl && root) {
     Object.entries(cfg.heroes)
       .sort((a, b) => a[1].name.localeCompare(b[1].name, cfg.locale))
       .forEach(([id, h]) => heroGroup.append(new Option(h.name, id)));
-    // 일반 가이드는 2026-10-09 뺐다 — 예전 일반 가이드를 고치는 경우에만 그 칸을 남긴다
-    const heroSel = el('select', { class: 'field h-10' }, new Option(t.pickHero, ''), ...(editing?.hero === GENERAL ? [new Option(t.generalOption, String(GENERAL))] : []), heroGroup);
+    // 게임 가이드(영웅 칸 0)는 영웅 묶음 위에 (2026-10-09 뺐다가 2026-11-04 다시)
+    const heroSel = el('select', { class: 'field h-10' }, new Option(t.pickHero, ''), new Option(t.generalOption, String(GENERAL)), heroGroup);
     const pre = params.get('hero');
     if (pre && heroBySlug.has(pre) && !editing) heroSel.value = String(heroBySlug.get(pre));
     else if (draft.hero) heroSel.value = draft.hero;
@@ -1229,7 +1248,7 @@ if (cfgEl && root) {
     root!.replaceChildren(form);
   }
 
-  if (cfg.mode === 'list') void renderList();
+  if (cfg.mode === 'list' || cfg.mode === 'game') void renderList(cfg.mode === 'game');
   else if (cfg.mode === 'view') void renderView();
   else void renderWrite();
 }

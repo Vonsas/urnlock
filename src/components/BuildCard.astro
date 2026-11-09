@@ -10,7 +10,7 @@ import SkillOrder from './SkillOrder.astro';
 import type { Ability, AuthorStanding, BuildPerf, GameBuild, Item, Rank } from '../data';
 import { localePath, useTranslations, type Locale } from '../i18n';
 import { fill, formatDate } from '../lib/format';
-import { groupName, skillOrderFits } from '../lib/build-groups';
+import { groupName, shopGroups, skillOrderFits } from '../lib/build-groups';
 
 interface Props {
   lang: Locale;
@@ -35,9 +35,7 @@ const { lang, items, abilities, title, meta, buildId, build, note, source, patch
 const t = useTranslations(lang);
 const itemById = new Map(items.filter((i) => i.id !== undefined).map((i) => [i.id!, i]));
 const day = (unix: number) => formatDate(lang, new Date(unix * 1000).toISOString().slice(0, 10));
-const groups = (build?.groups ?? [])
-  .map((g) => ({ name: groupName(g.name, t), items: g.items.filter((it) => itemById.has(it.itemId)) }))
-  .filter((g) => g.items.length);
+const groups = shopGroups(build?.groups ?? [], (id) => itemById.has(id)).map((g) => ({ ...g, name: groupName(g.name, t) }));
 const oldPatch = build && patchFrom ? build.updatedAt < patchFrom : false;
 ---
 
@@ -83,19 +81,32 @@ const oldPatch = build && patchFrom ? build.updatedAt < patchFrom : false;
             <h4 class:list={['truncate text-xs font-semibold text-paper-400', !g.name && 'max-sm:hidden']} title={g.name || undefined}>
               {g.name}
             </h4>
-            <ul class="flex flex-wrap gap-1.5">
-              {g.items.map((it) => {
-                const item = itemById.get(it.itemId)!;
-                return (
-                  <li>
-                    <a href={`${localePath(lang, 'items')}#${item.slug}`} title={it.note ? `${item.name} — ${it.note}` : item.name}>
-                      <ItemIcon slug={item.slug} category={item.category} image={item.image} class="size-9" />
-                      <span class="sr-only">{item.name}</span>
-                    </a>
-                  </li>
-                );
-              })}
-            </ul>
+            <div class="min-w-0">
+              <ul class="flex flex-wrap gap-1.5">
+                {g.items.map((it) => {
+                  const item = itemById.get(it.itemId)!;
+                  const href = `${localePath(lang, 'items')}#${item.slug}`;
+                  // 작성자 설명이 있는 아이템 = 점 표시 + 바로 뜨는 툴팁. 터치는 첫 탭에 설명, 다음 탭에 이동 (scripts/tooltip.ts data-tip-first)
+                  return (
+                    <li>
+                      {it.note ? (
+                        <a href={href} class="relative block" data-tip={`${item.name}\n${it.note}`} data-tip-first>
+                          <ItemIcon slug={item.slug} category={item.category} image={item.image} class="size-9" />
+                          <span class="note-dot" />
+                          <span class="sr-only">{item.name} — {it.note}</span>
+                        </a>
+                      ) : (
+                        <a href={href} title={item.name}>
+                          <ItemIcon slug={item.slug} category={item.category} image={item.image} class="size-9" />
+                          <span class="sr-only">{item.name}</span>
+                        </a>
+                      )}
+                    </li>
+                  );
+                })}
+              </ul>
+              {g.desc && <p class="mt-1.5 text-xs leading-relaxed break-words whitespace-pre-line text-paper-200">{g.desc}</p>}
+            </div>
           </section>
         ))}
       </div>

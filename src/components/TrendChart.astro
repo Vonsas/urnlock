@@ -5,7 +5,8 @@
  * 화면 폭이 달라도 글씨 크기가 그대로다. 하루 칸에 마우스를 올리면 그날 승률·판수 (scripts/tooltip.ts).
  */
 import { useTranslations, type Locale } from '../i18n';
-import { fill, formatNumber, formatPercent } from '../lib/format';
+import { formatNumber, formatPercent } from '../lib/format';
+import { tipAttr, winTone } from '../lib/tip';
 
 interface Props {
   lang: Locale;
@@ -40,7 +41,13 @@ const patchLines = patches
   .map((p) => ({ ...p, i: Math.floor((p.day - first) / 86_400) }))
   .filter((p) => p.i >= 0 && p.i <= n - 1);
 const tipFor = (p: (typeof points)[number]) =>
-  `${md.format(new Date(p.day * 1000))}\n${t.heroes.chartWinRate} ${formatPercent(lang, p.winRate)} · ${fill(t.heroes.matchCount, { n: formatNumber(lang, p.matches) })}`;
+  tipAttr({
+    h: md.format(new Date(p.day * 1000)),
+    rows: [
+      [t.heroes.chartWinRate, formatPercent(lang, p.winRate), winTone(p.winRate)],
+      [t.tiers.matches, formatNumber(lang, p.matches)],
+    ],
+  });
 ---
 
 {
@@ -88,7 +95,7 @@ const tipFor = (p: (typeof points)[number]) =>
         {/* 마우스 영역 — 하루 한 칸, 선 그래프와 막대를 함께 덮는다 */}
         <div class="absolute inset-0 flex">
           {points.map((p) => (
-            <span data-tip={tipFor(p)} class="flex-1 transition-colors duration-150 hover:bg-paper-50/6" />
+            <span data-tip-rows={tipFor(p)} class="flex-1 transition-colors duration-150 hover:bg-paper-50/6" />
           ))}
         </div>
       </div>

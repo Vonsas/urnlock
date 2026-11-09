@@ -1,7 +1,7 @@
 ---
 /**
  * 소울 아이콘 — 가격 옆에 붙는 게임 공식 소울 모양 (2026-10-06 사용자 요청, 예전엔 다이아 ◆).
- * 원본은 흰색 SVG 라 마스크로 쓰고 글자색(currentColor)을 입힌다 — 기본 민트(brass-400), 필요하면 class 로 바꾼다.
+ * 원본은 흰색 SVG 라 마스크로 쓰고 글자색(currentColor)을 입힌다 — 기본은 고정색 soul(테마를 안 따른다), 필요하면 class 로 바꾼다.
  * 마스크 주소는 BaseLayout 이 페이지에 한 번 --soul-mask 로 넣고 모양은 global.css .soul-icon (2026-10-14 최적화 — 칸마다 주소를 쓰면 아이템 페이지가 50KB 늘었다).
  * 이미지를 못 받으면 예전 다이아로.
  */
@@ -19,6 +19,6 @@ const src = await gameSvg(SOUL_ICON_URL);
   src ? (
     <span aria-hidden="true" class:list={['soul-icon', className]} />
   ) : (
-    <span aria-hidden="true" class:list={['size-1.5 flex-none rotate-45 bg-brass-400', className]} />
+    <span aria-hidden="true" class:list={['size-1.5 flex-none rotate-45 bg-soul', className]} />
   )
 }

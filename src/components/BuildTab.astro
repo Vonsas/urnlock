@@ -2,7 +2,7 @@
 /**
  * 영웅 상세 '빌드' 탭 — 위의 분할 버튼(.seg, 다른 페이지 필터와 같은 모양)으로 보기를 고른다.
  *   [공식 인기] [추천 빌드 N] [상위권 인기] [상위권 통계]
- * 상위권 인기 = 예지자+ 14일 사용 순위 (2026-10-03 초월자+ → 예지자+) 하나로 통일 (2026-10-03): 따로 보기에선 작성자 상관없이 1–3위, 추천 빌드가 그 순위 안이면 같은 이름의 배지.
+ * 상위권 인기 = 예지자+ 14일 사용 순위 (2026-10-03 초월자+ → 예지자+) 하나로 통일 (2026-10-03): 따로 보기에선 작성자 상관없이 1–5위, 추천 빌드가 그 순위 안이면 같은 이름의 배지.
  * (2026-10-02 에 1–3위 보기를 뺐다가 10-03 다시 살리며 '초월자+ 인기' 와 '상위권 인기' 가 겹쳐 보여 이름을 하나로 합쳤다)
  * 프로 빌드는 영웅마다 30명 넘게 나올 수 있어 버튼 하나로 묶고, 안에서 선수(최근 수정 순)를 다시 고른다.
  * 처음엔 프로 빌드가 있으면 프로 빌드, 없으면 공식 인기. 모든 게임 빌드는 같은 틀(BuildCard: 아이템 묶음 + 스킬 순서).
@@ -12,7 +12,6 @@ import Panel from './Panel.astro';
 import PopularItems from './PopularItems.astro';
 import BuildCard from './BuildCard.astro';
 import HeroBuild from './HeroBuild.astro';
-import SkillMaxOrder from './SkillMaxOrder.astro';
 import type { Ability, HeroInsights, HeroPopularItems, Item, ProBuild, Rank, TopBuild } from '../data';
 import { useTranslations, type Locale } from '../i18n';
 import { fill, formatNumber } from '../lib/format';
@@ -47,13 +46,10 @@ const buttons = [...views].sort((a, b) => order.indexOf(a.kind) - order.indexOf(
 const initial = views[0]?.id;
 ---
 
-{/* 스킬 선마 — 보기와 상관없이 맨 위 (2026-10-08 사용자 요청) */}
-{insights && <SkillMaxOrder lang={lang} abilities={abilities} insights={insights} />}
-
 {
   views.length > 0 && (
-    <div data-build-views class="grid grid-cols-[minmax(0,1fr)] gap-4">
-      <div role="tablist" aria-label={t.heroes.buildPicker} class="seg max-w-full justify-self-start max-sm:flex-wrap sm:overflow-x-auto">
+    <div data-build-views class="grid grid-cols-[minmax(0,1fr)]">
+      <div role="tablist" aria-label={t.heroes.buildPicker} class="seg mx-4 mt-4 mb-1 max-w-[calc(100%-2rem)] justify-self-start max-sm:flex-wrap sm:overflow-x-auto">
         {buttons.map((v) => (
           <button type="button" role="tab" data-build-view-btn={v.id} aria-pressed={v.id === initial ? 'true' : 'false'} aria-selected={v.id === initial ? 'true' : 'false'}>
             {v.label}
@@ -63,7 +59,7 @@ const initial = views[0]?.id;
       </div>
 
       {views.map((v) => (
-        <div data-build-view={v.id} data-hidden={v.id !== initial ? '' : undefined} class="grid grid-cols-[minmax(0,1fr)] gap-4">
+        <div data-build-view={v.id} data-hidden={v.id !== initial ? '' : undefined} class="sheet-stack min-w-0">
           {v.kind === 'official' && popular && <PopularItems lang={lang} popular={popular} items={items} />}
           {v.kind === 'pro' && (
             <Panel title={t.heroes.proTitle} bodyClass="px-4 pb-4">

@@ -5,10 +5,11 @@ import '../styles/global.css';
 import SiteHeader from '../components/SiteHeader.astro';
 import SiteFooter from '../components/SiteFooter.astro';
 import CityScene from '../components/CityScene.astro';
-import { LOCALES, LOCALE_META, localePath, stripLocale, useTranslations, type Locale } from '../i18n';
+import { LOCALES, LOCALE_META, localePath, stripLocale, useTranslations, xDefault, type Locale } from '../i18n';
 import { getDataSource } from '../data';
 import { gameSvg } from '../lib/images';
 import { SOUL_ICON_URL } from '../lib/icons';
+import { THEME_BOOT } from '../lib/themes';
 
 interface Props {
   lang: Locale;
@@ -21,8 +22,10 @@ interface Props {
   hideSearch?: boolean;
   /** 검색 엔진에 올리지 않는다 ('준비 중' 페이지 등) */
   noindex?: boolean;
+  /** 방문 통계 비콘. 기본은 noindex 가 아닐 때만 — 검색엔진에만 숨기는 페이지(가이드 보기)는 true 로 */
+  analytics?: boolean;
 }
-const { lang, title, seoTitle, description, hideSearch = false, noindex = false } = Astro.props;
+const { lang, title, seoTitle, description, hideSearch = false, noindex = false, analytics = !noindex } = Astro.props;
 const t = useTranslations(lang);
 const source = await getDataSource();
 // 소울 아이콘 모양 — 아이템 페이지에 수백 개라 주소를 칸마다 쓰지 않고 페이지에 한 번 (SoulIcon · global.css .soul-icon, 2026-10-14 최적화)
@@ -31,6 +34,8 @@ const soulMask = await gameSvg(SOUL_ICON_URL);
 const pageTitle = seoTitle ?? title;
 const fullTitle = pageTitle ? `${pageTitle} · ${t.site.name}` : `${t.site.name} — ${t.site.subtitle}`;
 const rest = stripLocale(Astro.url.pathname);
+// 로그인 제한 안내 (2026-11-03 사용자 요청 — Vercel 무료 한도를 넘겨 11/5 까지 /api 가 멈출 수 있음). 한국 11/6 0시가 지난 빌드부터 사라진다 (6시간마다 재빌드)
+const loginNotice = Date.now() < Date.parse('2026-11-06T00:00:00+09:00');
 ---
 
 <!doctype html>
@@ -42,6 +47,8 @@ const rest = stripLocale(Astro.url.pathname);
     <title>{fullTitle}</title>
     <meta name="description" content={description ?? t.site.description} />
     <meta name="theme-color" content="#0b1a20" />
+    {/* 고른 색 테마를 그리기 전에 붙인다 (lib/themes.ts) — 이 줄은 theme-color 뒤에 있어야 주소창 색도 바꾼다 */}
+    <script is:inline set:html={THEME_BOOT} />
     <meta name="color-scheme" content="dark" />
     <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
     {/* 구글 검색 결과 아이콘은 비트맵(48px 배수)을 쓴다 — tools/build-favicons.mjs */}
@@ -62,9 +69,9 @@ const rest = stripLocale(Astro.url.pathname);
     <meta name="twitter:card" content="summary_large_image" />
     {/* 방문자 통계 — Cloudflare Web Analytics (쿠키 없음, 배포 빌드에만). 2026-10-30 Vercel Web Analytics 에서 바꿈 —
         그쪽은 페이지뷰마다 스크립트 + 수집 요청이 Vercel 로 가서 CDN 요청 한도의 약 15% 를 썼다. 토큰은 공개 값 (CSP 는 vercel.json).
-        noindex 페이지(관리자 · 준비 중)엔 싣지 않는다 — 관리자 비밀번호 칸과 다른 회사 스크립트를 한 페이지에 두지 않으려고 */}
-    {import.meta.env.PROD && !noindex && <script is:inline defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "ed0a6a427f274fc4874472c35fc64144"}'></script>}
-    {/* 검색 노출 (2026-10-05): 정식 주소 · 언어별 같은 페이지 · 언어를 모를 때(x-default)는 한국어. 사이트맵은 /sitemap.xml */}
+        noindex 페이지(관리자 · 준비 중 · 쓰기)엔 싣지 않는다 — 가이드 보기는 검색엔진에만 숨긴 페이지라 analytics 로 켠다 — 관리자 비밀번호 칸과 다른 회사 스크립트를 한 페이지에 두지 않으려고 */}
+    {import.meta.env.PROD && analytics && <script is:inline defer src="https://static.cloudflareinsights.com/beacon.min.js" data-cf-beacon='{"token": "ed0a6a427f274fc4874472c35fc64144"}'></script>}
+    {/* 검색 노출 (2026-10-05): 정식 주소 · 언어별 같은 페이지 · 언어를 모를 때(x-default)는 한국어 — 첫 화면만 언어 고르기 첫 주소 `/`. 사이트맵은 /sitemap.xml */}
     {noindex && <meta name="robots" content="noindex" />}
     {Astro.site && !noindex && <link rel="canonical" href={new URL(Astro.url.pathname, Astro.site).href} />}
     {
@@ -73,7 +80,8 @@ const rest = stripLocale(Astro.url.pathname);
           <link rel="alternate" hreflang={LOCALE_META[code].htmlLang} href={new URL(localePath(code, rest), Astro.site)} />
         ))
     }
-    {Astro.site && !noindex && <link rel="alternate" hreflang="x-default" href={new URL(localePath('ko', rest), Astro.site)} />}
+    {Astro.site && !noindex && <link rel="alternate" hreflang="x-default" href={new URL(xDefault(rest), Astro.site)} />}
+    <slot name="head" />
 
   </head>
   <body class="flex min-h-dvh flex-col">
@@ -101,6 +109,7 @@ const rest = stripLocale(Astro.url.pathname);
       )
     }
     <SiteHeader lang={lang} hideSearch={hideSearch} />
+    {loginNotice && <p class="bg-notice/10 px-4 py-1.5 text-center text-xs font-semibold text-notice sm:text-sm">{t.site.loginNotice}</p>}
     <!-- 화면 폭 전체를 쓰는 머리 장면 (첫 페이지의 밤 도시) — main 의 최대 폭 밖 -->
     <slot name="hero" />
     {

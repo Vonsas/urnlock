@@ -44,10 +44,10 @@ export async function tierPageConfig(lang: Locale, mode: 'tier' | 'stats'): Prom
         ? [...b.heroes]
             .sort((x, y) => (y.score ?? -Infinity) - (x.score ?? -Infinity))
             .map((h): TierCell => {
-              // 변동은 '최근 2주' 보드에만 (일주일 전 '최근 2주' 와 비교), 근거는 마우스를 올리면 보이는 한 줄
+              // 변동은 '최근 2주' 보드에만 (일주일 전 '최근 2주' 와 비교), 근거는 마우스를 올리면 보이는 표의 줄
               const prev = b.rank === 'upper' || b.rank === 'lower' ? data?.prevTiers?.[b.rank] : undefined;
               const change = b.window === '14d' ? tierChange(h.tier, prev?.[h.heroId]) : null;
-              return [h.heroId, h.tier, h.tag, h.lowSample ? 1 : 0, change, reasons.get(b)?.get(h.heroId) ?? ''];
+              return [h.heroId, h.tier, h.tag, h.lowSample ? 1 : 0, change, reasons.get(b)?.get(h.heroId) ?? null];
             })
         : b.heroes.map(
             // 승수는 승률 × 판수로 되돌린다 (빌드 때 정확한 값) — 브라우저가 기간끼리 빼서 '변화' 를 계산하므로 반올림한 승률을 싣지 않는다

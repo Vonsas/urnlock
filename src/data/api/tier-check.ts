@@ -49,6 +49,10 @@ export async function checkTierData(data: TierData | null, activeHeroIds: number
     ['14d', 'upper'],
     ['patch', 'upper'],
     ['14d', 'lower'],
+    // 통계 기본(최근 7일, 2026-11-05) · 7일 변화 열이 쓰는 14일 · 현재 패치 버튼
+    ['7d', 'ranked'],
+    ['7d', 'normal'],
+    ['14d', 'ranked'],
     ['patch', 'ranked'],
     ['patch', 'normal'],
   ] as const) {

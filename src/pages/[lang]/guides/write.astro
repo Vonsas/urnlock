@@ -16,7 +16,7 @@ const configJson = await guidesPageConfig(lang, 'write');
 
 <BaseLayout lang={lang} title={t.guides.write} noindex>
   <PageHead title={t.guides.write} />
-  <div data-guides-view></div>
+  <div data-guides-view class="min-h-svh"></div>
   <script type="application/json" id="guides-config" set:html={configJson} />
 </BaseLayout>
 

@@ -1,8 +1,26 @@
 # /api 요청 수 제한 (#18, 2026-10-30)
 
-두 겹으로 막는다. 앞단(Vercel 방화벽)은 함수에 닿기 전에, 뒷단(함수 안)은 저장소에 닿기 전에.
+처음 설계는 두 겹이었다 - 앞단(Vercel 방화벽)은 함수에 닿기 전에, 뒷단(함수 안)은 저장소에 닿기 전에. Vercel 앞단 규칙은 만든 적이 없고, 2026-11-01 www 가 Cloudflare 를 거치게 된 뒤로는 만들면 안 된다(1절).
+지금은 두 겹 - 앞단 = Cloudflare WAF 요청 수 제한(0절, 2026-11-02 #74), 뒷단 = 함수 안 제한(2절).
+
+## 0. Cloudflare WAF 요청 수 제한 - 앞단 (#74, 2026-11-02 만듦)
+
+Cloudflare → urnlock.com → Security → WAF → Rate limiting rules → `api rate limit` (Active)
+
+| 칸 | 값 |
+|---|---|
+| 식 | `starts_with(http.request.uri.path, "/api/")` |
+| 기준 | IP (무료 요금제 고정) |
+| 수치 | 비공개 (함수 안 제한보다 넉넉하게, 폭주만 거름) |
+| 조치 | Block · 10초 (무료 요금제 고정, 응답 코드 칸 없음) |
+
+- 무료 요금제 규칙 한도 1개를 다 썼다. 조건 필드는 경로 · Verified Bot 만, 세는 구간 · 막는 시간 10초 고정, throttle 없음.
+- 화면: `src/scripts/api-result.ts` 는 상태 코드 429 만 보고 '잠시 후 다시'(busy) - 본문이 JSON 이 아니어도 된다. 쓰기 화면 일부(사진 올리기 등)는 JSON `error` 를 읽어 일반 오류 문구가 뜰 수 있다 (닿기 어려운 수치라 그대로 둠).
+- 되돌리기: 그 규칙을 끄거나(Disable) 지운다. 수치를 바꾸면 이 표도 고칠 것.
 
 ## 1. Vercel 방화벽 규칙 - 대시보드에서 직접 (직접 할 일)
+
+> 2026-11-01 부터 이 규칙은 쓰지 않는다 - www 가 Cloudflare 를 거쳐 Vercel 이 보는 IP 가 Cloudflare 것뿐이다 (이 절 끝 항목). 아래는 기록.
 
 무료(Hobby) 요금제의 요청 수 제한 규칙은 프로젝트당 1개, 사용자 정의 규칙은 모두 합쳐 3개까지다 (Vercel 문서 'WAF Rate Limiting' · 2026-10-30 확인).
 `vercel.json` 으로는 만들 수 없다 - `vercel.json` 의 방화벽 규칙(`routes[].mitigate`)은 '차단' · '확인(challenge)' 만 되고 요청 수 제한은 안 된다. 대시보드 또는 `vercel firewall` CLI 로 만든다.
@@ -21,9 +39,14 @@
 - 수치는 함수 안 제한(아래)보다 넉넉하게 - 방화벽은 모든 인스턴스를 합쳐 세므로 정상 사용을 막지 않는 선에서 반복 공격만 거른다.
 - 규칙이 1개뿐이라 로그인 · 운영자 주소를 따로 더 낮게 둘 수 없다 → 그쪽은 함수 안 제한(10회/분)과 원래 있던 저장소 한도(운영자 로그인 15분 5회)가 맡는다.
 - 저장 뒤 Publish 를 눌러야 적용된다. Firewall → Overview 에서 막힌 요청 수를 볼 수 있다.
-- Cloudflare 프록시(주황 구름)를 켜면 안 된다 - 켜면 Vercel 이 보는 IP 가 Cloudflare 것이 되어 모든 방문자가 몇 개 IP 로 묶여 세진다 (방화벽 · 함수 안 제한 둘 다). DNS 를 Cloudflare 로 옮겨도 DNS only(회색 구름) 그대로 (`docs/plan-dns-cloudflare.md`).
+- ~~Cloudflare 프록시(주황 구름)를 켜면 안 된다~~ - 2026-11-01 부터 www 는 Proxied 이고 `/api` 는 Pages 함수를 거쳐 온다(#55). 그래서 Vercel 이 보는 IP 는 Cloudflare 출구 몇 개뿐이라
+  이 Vercel 방화벽 IP 제한은 만들지 말 것(만들면 방문자 전체가 한 칸에서 세져 모두 429 - 실제로 만든 적은 없다). 지금 IP 별 제한은 아래 함수 안 제한(프록시가 넘긴 방문자 IP)이 맡는다.
+  앞단을 다시 두려면 Cloudflare WAF → Rate limiting rules(무료 1개)에 같은 조건(경로 `/api/` 로 시작 · IP 별 · 넉넉하게)으로 - Cloudflare 는 방문자 IP 를 직접 본다.
+  `origin.urnlock.com` 은 DNS only 그대로 - 바꾸지 말 것 (`docs/plan-dns-cloudflare.md` '지금 레코드').
 
 ## 2. 함수 안 1차 제한 - 코드 (`api/_lib/limit.ts`)
+
+세는 IP 는 `clientIp()` - IPv6 는 앞 64비트(/64)로 줄여 센다(한 회선이 /64 를 받아 주소를 바꿔 가며 비켜 가지 못하게), 프록시(Pages 함수)를 거친 요청은 비밀값이 맞을 때만 프록시가 넘긴 방문자 IP (#51 · `docs/plan-cloudflare-split.md` 3절).
 
 함수 인스턴스 메모리에 IP별 1분 고정 창. 저장소(Redis)를 쓰지 않는다 - 세는 데 명령을 쓰면 그 자체가 무료 한도를 깎으므로.
 인스턴스마다 따로라 느슨하지만 한 곳에서 되풀이하는 요청은 저장소에 닿기 전에 거른다.

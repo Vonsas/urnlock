@@ -3,18 +3,21 @@
  * hero-build-stats 는 영웅마다 1회(analytics, IP 당 분당 200회를 티어·지표와 나눠 씀 → 동시 4개).
  * 표본이 작아(영웅당 14일 수십~수백 판) 승률은 보지 않고 쓴 판수·사람 수만 쓴다.
  * 리플레이 분석된 매치만 집계되어 판수가 적다 — API 기본값(min_matches=20)이면 켈빈·그레이브즈 등 9명이 하나도 안 나와서
- * 10판으로 낮췄다 (2026-10-03, 보여주는 건 1–3위뿐이라 사용자 확인).
+ * 10판으로 낮췄다가(2026-10-03) 2026-11-08 사용자: 표본이 적은 빌드는 빼자 → 100판 (그래도 모든 영웅이 3개 이상 나온다).
  * 막 나온 영웅은 예지자+ 판수가 모자라 하나도 안 나온다 (2026-10-07 바바: 출시 반나절 예지자+ 7판) → 그런 영웅만 **전체 랭크**로 한 번 더 받고
  * allRanks 로 표시해 화면이 '상위권 인기' 대신 '인기 빌드' 로 부른다 (사용자: 신캐가 빌드에 바로 들어오게, 영웅 탭처럼).
+ * 전체 랭크에도 100판 빌드가 없으면 그때만 10판까지 낮춘다 (2026-11-09 사용자 — 출시일은 API 에 없어 '100판 빌드가 없음' 으로 판단).
  */
 import { createHash } from 'node:crypto';
-import { API_BASE, load } from './fetch';
+import { API_BASE, load, loadRank } from './fetch';
 import { pool } from './tiers';
 
 const TOP_MIN = 81;
 const TOP_MAX = 116;
 /** 빌드 하나가 이 판수 이상 쓰여야 순위에 넣는다 */
-const MIN_MATCHES = 10;
+const MIN_MATCHES = 100;
+/** 예지자+ · 전체 랭크 어디에도 100판 빌드가 없는 영웅(출시 직후)만 쓰는 기준 */
+const NEW_HERO_MIN_MATCHES = 10;
 
 export interface BuildUsage {
   buildId: number;
@@ -44,11 +47,14 @@ export async function loadTopBuildUsage(from: number, heroIds: number[]): Promis
   // 예지자+ 에 하나도 없는 영웅(막 나온 영웅) → 전체 랭크. 요청이 실패한 영웅(null)은 빼둔다 — 실패를 '빌드 없음' 으로 보면
   // 잘 알려진 영웅도 전체 랭크 순위로 바뀌어 '상위권 인기' 표시가 사라졌다 (2026-10-14 점검)
   const empty = rows.filter(([, r]) => r !== null && r.length === 0).map(([id]) => id);
+  // 전체 랭크에도 100판 빌드가 없으면(출시 직후) 그때만 NEW_HERO_MIN_MATCHES 판까지 — 한 번에 받아 나눈다 (2026-11-09 사용자)
   const fallback = await pool(
     empty.map((id) => () =>
-      load(`top-builds-${id}-14d-all-m${MIN_MATCHES}`, `${API_BASE}/v1/analytics/hero-build-stats/${id}?min_unix_timestamp=${from}&min_matches=${MIN_MATCHES}`, rowsOf).then(
-        (r) => [id, (r ?? []).map((u) => ({ ...u, allRanks: true }))] as const,
-      ),
+      load(`top-builds-${id}-14d-all-m${NEW_HERO_MIN_MATCHES}`, `${API_BASE}/v1/analytics/hero-build-stats/${id}?min_unix_timestamp=${from}&min_matches=${NEW_HERO_MIN_MATCHES}`, rowsOf).then((r) => {
+        const all = r ?? [];
+        const enough = all.filter((u) => u.matches >= MIN_MATCHES);
+        return [id, (enough.length ? enough : all).map((u) => ({ ...u, allRanks: true }))] as const;
+      }),
     ),
     4,
   );
@@ -90,7 +96,7 @@ export async function loadBuildPerf(from: number, heroIds: number[]): Promise<Ma
  * (이름이 흔하면 엉뚱한 사람이 잡히므로). 여러 지역에 잡히면 더 높은 순위.
  * 랭크는 /v1/players/rank?account_ids= 한 번에 (매치 끝났을 때 랭크 — 랭크를 안 하면 없음).
  */
-export const REGIONS = ['Asia', 'Europe', 'NAmerica', 'SAmerica', 'Oceania'] as const;
+export const REGIONS = ['Europe', 'NAmerica', 'Asia', 'SAmerica', 'Oceania'] as const;
 export type Region = (typeof REGIONS)[number];
 export interface Standing {
   region?: Region;
@@ -128,7 +134,7 @@ export async function loadStandings(authors: Array<{ id: number; names: string[]
     const part = ids.slice(i, i + 100);
     // 캐시 이름은 계정 목록 전체의 해시로 — 처음 · 끝 · 개수만 쓰면 다른 목록이 같은 캐시를 읽어 랭크가 빠졌다
     const key = createHash('sha1').update(part.join(',')).digest('hex').slice(0, 16);
-    const ranks = await load(`ranks-${key}`, `${API_BASE}/v1/players/rank?account_ids=${part.join(',')}`, (json) =>
+    const ranks = await loadRank(`ranks-${key}`, `${API_BASE}/v1/players/rank?account_ids=${part.join(',')}`, (json) =>
       (json as Array<{ account_id: number; badge?: number }>).map((r) => [r.account_id, r.badge ?? 0] as [number, number]),
     );
     for (const [id, badge] of ranks ?? []) if (badge > 0) out.set(id, { ...out.get(id), badge });

@@ -52,6 +52,7 @@ export async function POST(request: Request): Promise<Response> {
   } catch {
     return fail('server');
   }
+  if (!body || typeof body !== 'object') return fail('server'); // JSON null · 숫자 (#78)
   // 봇 함정 칸에 뭔가 들어왔으면 성공한 척하고 버린다 (봇이 다시 시도하지 않게)
   if (typeof body.website === 'string' && body.website.trim()) return json({ ok: true });
   const hero = heroParam(body.hero);

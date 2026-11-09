@@ -15,6 +15,7 @@ import Wordmark from '../../components/Wordmark.astro';
 import { LOCALES, localePath, toLocale, useTranslations } from '../../i18n';
 import { getPatchBanner, getPatchNotes, type PatchNote } from '../../data';
 import { gameImage } from '../../lib/images';
+import { siteSchema } from '../../lib/site-schema';
 
 export function getStaticPaths() {
   return LOCALES.map((lang) => ({ params: { lang } }));
@@ -35,12 +36,14 @@ const newer = feature && notes[0] && notes[0].id !== feature.id ? notes[0] : und
 ---
 
 <BaseLayout lang={lang} hideSearch>
+  {Astro.site && <script slot="head" type="application/ld+json" set:html={siteSchema(Astro.site)} />}
   <!-- 밤 도시 장면 위에 사이트 이름 · 전적 검색 -->
   <section slot="hero" class="relative isolate h-[34rem] sm:h-[42rem]">
     <CityScene />
     <div class="relative mx-auto flex max-w-page flex-col items-center px-4 pt-12 sm:px-6 sm:pt-16">
-      <h1 aria-label={`${t.site.name} — ${t.site.subtitle}`}>
+      <h1>
         <Wordmark class="text-[3.75rem] text-paper-50 sm:text-[5rem]" />
+        <span class="sr-only">{t.site.name} — {t.site.subtitle}</span>
       </h1>
       <SearchBox lang={lang} size="lg" class="mt-8 w-full max-w-2xl sm:mt-10" />
     </div>

@@ -12,10 +12,13 @@ import { redis } from '../_lib/redis.js';
 import { adminSession } from '../_lib/session.js';
 import { approvedKey, authorSnapshot, loadTips, tipKey, type StoredTip } from '../_lib/tips-store.js';
 import { limited } from '../_lib/limit.js';
+import { accessBlocked } from '../_lib/access.js';
 
 async function handleGet(request: Request): Promise<Response> {
   const busy = limited(request, 'read');
   if (busy) return busy;
+  const denied = await accessBlocked(request);
+  if (denied) return denied;
   if (!(await adminSession(request))) return json({ error: 'auth' }, 401);
   const status = new URL(request.url).searchParams.get('status') === 'approved' ? 'approved' : 'pending';
   if (status === 'pending') {
@@ -31,6 +34,8 @@ async function handleGet(request: Request): Promise<Response> {
 async function handlePost(request: Request): Promise<Response> {
   const busy = limited(request, 'write');
   if (busy) return busy;
+  const denied = await accessBlocked(request);
+  if (denied) return denied;
   if (!sameOrigin(request)) return json({ ok: false }, 403);
   if (!(await adminSession(request))) return json({ ok: false, error: 'auth' }, 401);
   const { id, action } = (await request.json().catch(() => ({}))) as { id?: unknown; action?: unknown };

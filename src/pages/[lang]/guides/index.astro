@@ -1,5 +1,5 @@
 ---
-/** 가이드 목록 (2026-10-06) — 영웅 고르기 · 추천순/최신순 · 카드. 스팀 인증한 유저가 쓴 가이드 (scripts/guides.ts) */
+/** 영웅 가이드 목록 (2026-10-06, 2026-11-04 게임 가이드는 game.astro 로) — 영웅 고르기 · 추천순/최신순 · 카드. 스팀 인증한 유저가 쓴 가이드 (scripts/guides.ts) */
 import BaseLayout from '../../../layouts/BaseLayout.astro';
 import PageHead from '../../../components/PageHead.astro';
 import { LOCALES, localePath, toLocale, useTranslations } from '../../../i18n';
@@ -14,8 +14,8 @@ const t = useTranslations(lang);
 const configJson = await guidesPageConfig(lang, 'list');
 ---
 
-<BaseLayout lang={lang} title={t.nav.guides} description={t.home.sectionDesc.guides}>
-  <PageHead title={t.nav.guides}>
+<BaseLayout lang={lang} seoTitle={t.seo.guides} title={t.nav.guidesHero} description={t.seo.guidesDesc}>
+  <PageHead title={t.nav.guidesHero}>
     <a
       href={localePath(lang, 'guides/write')}
       data-guides-write-link
@@ -25,7 +25,7 @@ const configJson = await guidesPageConfig(lang, 'list');
       {t.guides.write}
     </a>
   </PageHead>
-  <div data-guides-view></div>
+  <div data-guides-view class="min-h-svh"></div>
   <script type="application/json" id="guides-config" set:html={configJson} />
 </BaseLayout>
 

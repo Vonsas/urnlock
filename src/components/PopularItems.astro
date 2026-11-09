@@ -13,6 +13,7 @@ import type { HeroPopularItems, Item } from '../data';
 import { ITEM_CATEGORIES, ITEM_TIERS, tierCost } from '../data';
 import { localePath, useTranslations, type Locale } from '../i18n';
 import { fill, formatDate, formatNumber } from '../lib/format';
+import { tipAttr, tipText, type TipSpec } from '../lib/tip';
 
 interface Props {
   lang: Locale;
@@ -64,10 +65,13 @@ const date = formatDate(lang, new Date(popular.updatedAt * 1000).toISOString().s
                 {cell.picks.map((pick) => {
                   const phase = t.heroes.popularPhase[pick.phase];
                   const pct = Math.round(pick.pick);
+                  const tip: TipSpec = { h: pick.item.name, rows: [[t.heroes.tipBuyRate, `${pct}%`], [t.heroes.tipPhase, phase]] };
                   return (
                     <a
                       href={`${localePath(lang, 'items')}#${pick.item.slug}`}
-                      title={`${pick.item.name} — ${fill(t.heroes.popularBought, { n: pct, phase })}`}
+                      title={tipText(tip)}
+                      data-tip-rows={tipAttr(tip)}
+                      data-tip-delay
                       class="group flex w-[4.5rem] flex-col items-center gap-1 rounded-sm p-1 text-center transition-colors duration-150 hover:bg-ink-800"
                     >
                       <span class="relative">

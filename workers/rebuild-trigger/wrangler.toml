@@ -1,0 +1,18 @@
+# 6시간 재빌드 깨우기 Worker (index.js 머리 주석). 이 폴더에서 `npx wrangler deploy` — 사이트(Pages)의 루트 wrangler.toml 과는 따로.
+# 비밀값은 `npx wrangler secret put GITHUB_TOKEN` (선택 DISCORD_WEBHOOK) — 여기 적지 않는다.
+name = "urnlock-rebuild-trigger"
+main = "index.js"
+compatibility_date = "2024-11-11"
+# HTTP 주소를 열지 않는다 — 예약 실행만
+workers_dev = false
+preview_urls = false
+
+[triggers]
+# GitHub 예약(daily-rebuild.yml)과 같은 시각 — 01:37 · 07:37 · 13:37 · 19:37 KST (UTC 기준)
+# 그리고 2분마다 새 Steam 글 감시 (index.js 의 WATCH_CRON 과 같은 글자)
+crons = ["37 4,10,16,22 * * *", "*/2 * * * *"]
+
+# Worker → Logs 에서 '실행 요청' · '건너뜀' 을 보려고 (docs/rebuild-trigger.md). 하루 약 150건이라 무료 한도(하루 20만 건)와 거리가 멀다.
+# 이 줄이 없으면 wrangler deploy 가 대시보드에서 켠 로그를 끈다 (2026-11-04 첫 wrangler 배포에서 꺼짐)
+[observability]
+enabled = true

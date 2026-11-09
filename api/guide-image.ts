@@ -1,8 +1,8 @@
 /**
  * 가이드 사진 올리기 (2026-10-06) — POST /api/guide-image, 본문 = WebP 파일 그대로 (브라우저가 긴 변 1600px 로 줄여 보낸다)
- * 스팀 인증한 사람만 · 같은 사이트 요청만 · 차단 계정 안 됨 · WebP 인지 파일 머리로 확인 · 2MB · 사이트 하루 60장 · 계정 하루 20장.
+ * 스팀 인증한 사람만 · 같은 사이트 요청만 · 차단 계정 안 됨 · WebP 인지 파일 머리로 확인 · 1MB · 긴 변 1600px · 사이트 하루 150장 · 계정 하루 20장.
  * 파일 이름에 계정 ID 를 넣지 않는다 — 공개 주소라 익명 가이드의 글쓴이가 드러났다 (2026-10-14 점검). 올린 사람은 img:{주소} 기록에 있다.
- * 돌려주는 주소는 운영자 확인 전까지 글쓴이 본인에게만 보인다 (api/guides.ts 가 pending 으로 저장).
+ * 올리면 바로 공개 (2026-10-09 — 운영자는 /admin [사진] 에서 지우기만). 저장소는 Cloudflare R2 (#34).
  */
 import { json, sameOrigin, storeDown } from './_lib/http.js';
 import { IMAGE_MAX_BYTES, IMAGE_MAX_SIDE, IMAGES_PER_DAY_ACCOUNT, IMAGES_PER_DAY_SITE, UNUSED, imageKey, imagesConfigured, storeImage, sweepUnused, webpSize } from './_lib/images.js';
@@ -30,7 +30,7 @@ export async function POST(request: Request): Promise<Response> {
     if ((await bump(`rate:img:${session.a}:${day}`, 2 * 86400)) > IMAGES_PER_DAY_ACCOUNT) return json({ error: 'rate' }, 429);
     if ((await bump(`rate:img:site:${day}`, 2 * 86400)) > IMAGES_PER_DAY_SITE) return json({ error: 'rate' }, 429);
 
-    // 저장소는 images.ts 가 고른다 — R2 (#34) 또는 예전 Vercel Blob
+    // 저장소는 Cloudflare R2 (#34, images.ts)
     const url = await storeImage(bytes);
     const now = Math.floor(Date.now() / 1000);
     await pipeline([

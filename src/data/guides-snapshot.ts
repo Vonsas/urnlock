@@ -13,7 +13,7 @@ import { StoreError, pipeline } from '../../api/_lib/redis';
 import { guideKey, parseGuides, toGuide, votesKey } from '../../api/_lib/guides-store';
 import { approvedKey, tipKey, toPublic, type StoredTip } from '../../api/_lib/tips-store';
 import { getHeroes } from './index';
-import { reuseSnapshot } from './snapshot-reuse';
+import { SNAPSHOT_GUIDES_MAX as GUIDES_MAX, SNAPSHOT_TIPS_MAX as TIPS_MAX, reuseSnapshot } from './snapshot-reuse';
 
 export interface GuidesSnapshot {
   builtAt: number;
@@ -27,11 +27,6 @@ export interface GuidesSnapshot {
   /** 저장소를 못 읽어 직전 배포의 스냅샷을 이어 썼는지 (health.json notes 용) */
   reused?: boolean;
 }
-
-/** 스냅샷에 싣는 가이드 수 — 목록 화면이 한 번에 보여 주는 만큼(영웅별 60 · 전체 200) */
-const GUIDES_MAX = 200;
-/** 영웅마다 팁 수 — /api/tips 와 같게 */
-const TIPS_MAX = 100;
 
 let memo: Promise<GuidesSnapshot> | undefined;
 export const loadGuidesSnapshot = () => (memo ??= build());

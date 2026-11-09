@@ -16,10 +16,13 @@ import { redis } from '../_lib/redis.js';
 import { adminSession } from '../_lib/session.js';
 import { PENDING_IMAGES, REPORTED, reportsKey, guideKey, isGuideId, loadGuides, loadVotes, newKey, removeGuide } from '../_lib/guides-store.js';
 import { limited } from '../_lib/limit.js';
+import { accessBlocked } from '../_lib/access.js';
 
 async function handleGet(request: Request): Promise<Response> {
   const busy = limited(request, 'read');
   if (busy) return busy;
+  const denied = await accessBlocked(request);
+  if (denied) return denied;
   if (!(await adminSession(request))) return json({ error: 'auth' }, 401);
   const q = new URL(request.url).searchParams;
   if (q.get('reports')) {
@@ -38,6 +41,8 @@ async function handleGet(request: Request): Promise<Response> {
 async function handlePost(request: Request): Promise<Response> {
   const busy = limited(request, 'write');
   if (busy) return busy;
+  const denied = await accessBlocked(request);
+  if (denied) return denied;
   if (!sameOrigin(request)) return json({ ok: false }, 403);
   if (!(await adminSession(request))) return json({ ok: false, error: 'auth' }, 401);
   const { id, url, action } = (await request.json().catch(() => ({}))) as { id?: unknown; url?: unknown; action?: unknown };

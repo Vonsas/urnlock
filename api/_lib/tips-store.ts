@@ -34,7 +34,7 @@ export async function authorSnapshot(accountId: number, hero: number) {
   const [profiles, rank, stats] = await Promise.all([
     get<Array<{ account_id: number; personaname: string }>>(`/v1/players/steam?account_ids=${accountId}`),
     get<{ rank?: number; subrank?: number }>(`/v1/players/${accountId}/rank`),
-    // hero 0 = 일반 가이드 — 영웅 판수는 없다
+    // hero 0 = 게임 가이드 — 영웅 판수는 없다
     hero ? get<Array<{ hero_id: number; matches_played: number }>>(`/v1/players/hero-stats?account_ids=${accountId}&hero_ids=${hero}`) : Promise.resolve(null),
   ]);
   return {
