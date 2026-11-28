@@ -1,6 +1,13 @@
 [
  {
   "source": "steam",
+  "title": " Minor Update - 11-27-2026",
+  "link": "https://store.steampowered.com/news/app/1422450/view/680768104678033231",
+  "pub_date": "2026-11-28T02:33:46Z",
+  "content": "<p class=\"bb_paragraph\">- Apollo: Riposte - Now procs on melee hits</p><p class=\"bb_paragraph\">- Apollo: Riposte - Cooldown reduced from 22s to 20s</p><p class=\"bb_paragraph\">- Apollo: Riposte - T2 debuff duration increased from +1s to +1.25s</p><p class=\"bb_paragraph\">- Baba: Base bullet resistance increased from -7% to -4%</p><p class=\"bb_paragraph\">- Baba: Threadsap - Cooldown reduced from 28s to 26s</p><p class=\"bb_paragraph\">- Baba: Threadsap - Spirit Damage Per Bullet increased from 12 + 0.26 to 18 + 0.3</p><p class=\"bb_paragraph\">- Baba: Granny Long Legs - Cooldown reduced from 32s to 30s</p><p class=\"bb_paragraph\">- Baba: Granny Long Legs - Heavy Melee now takes 0.1s less time to play out</p><p class=\"bb_paragraph\">- Baba: Granny Long Legs - Heavy Melee spirit damage scaling increased from 0.6 to 0.9</p><p class=\"bb_paragraph\">- Baba: Feed The Birds - T1 increased from +4m Cast Range to +5m</p>"
+ },
+ {
+  "source": "steam",
   "title": " Minor Update - 11-26-2026",
   "link": "https://store.steampowered.com/news/app/1422450/view/680768104678032838",
   "pub_date": "2026-11-26T17:21:48Z",
